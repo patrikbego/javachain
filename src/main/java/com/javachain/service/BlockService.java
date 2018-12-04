@@ -30,6 +30,8 @@ public class BlockService {
     MiningService miningService;
 
     private static final BigDecimal BLOCK_INCENTIVE = new BigDecimal(25);
+
+//  Difficulty of finding a new block. In Bitcoin It is updated every 2016 blocks when the difficulty reset occurs.
     private static final Integer DIFFICULTY = 2;
 
     public Block mineBlock(Wallet wallet, List<Transaction> transactions, Block previousBlock) throws Exception {

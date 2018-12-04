@@ -135,8 +135,8 @@ Conclusion:
     
 Hope this gives you a better overview on how the blockhains work and principles
 behind them. 
-While Bitcoin could be a future alternative to current transaction baking systems, there are certain issues which could be improved 
-(like transactions speed and issues with scalability)
+While Bitcoin could be a future alternative to current transaction banking systems, there are certain issues which could be improved 
+(like transactions speed, issues with scalability ...)
 Another vulnerability is it's binding to a certain hashing algorithm. While that is not 
 an issue at the current times it could become in 10, 20 ... years. 
 And here I see a chance for improvement. 
