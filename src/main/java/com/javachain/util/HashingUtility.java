@@ -1,11 +1,13 @@
 package com.javachain.util;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Objects;
 
 /**
  * Cryptographic Hashing serves the purpose of ensuring integrity, i.e. making it so that if
@@ -29,10 +31,9 @@ import java.security.NoSuchAlgorithmException;
 @Service
 public class HashingUtility {
 
-    public static final String CRYPTO_HASH_ALGORITHM = "SHA-256";
+    private static final Logger LOGGER = LoggerFactory.getLogger(HashingUtility.class);
 
-    @Autowired
-    EncodingUtility encodingUtility = new EncodingUtility();
+    public static final String CRYPTO_HASH_ALGORITHM = "SHA-256";
 
     private static final MessageDigest MESSAGE_DIGEST;
 
@@ -47,11 +48,16 @@ public class HashingUtility {
     }
 
     private static final String HEX_CHARS = "0123456789ABCDEF";
+    private final EncodingUtility encodingUtility;
+
+    public HashingUtility(EncodingUtility encodingUtility) {
+        this.encodingUtility = encodingUtility;
+    }
 
     public String getMD5(String source) {
         byte[] bytes;
         try {
-            bytes = source.getBytes("UTF-8");
+            bytes = source.getBytes(StandardCharsets.UTF_8.name());
         } catch (java.io.UnsupportedEncodingException ue) {
             throw new IllegalStateException(ue);
         }
@@ -82,12 +88,17 @@ public class HashingUtility {
         return md5.substring(0, 16);
     }
 
-    public byte[] sha256(String message) throws NoSuchAlgorithmException {
-        MessageDigest messageDigest = MessageDigest.getInstance(CRYPTO_HASH_ALGORITHM);
-        return messageDigest.digest(message.getBytes(StandardCharsets.UTF_8));
+    public byte[] sha256(String data) {
+        MessageDigest messageDigest = null;
+        try {
+            messageDigest = MessageDigest.getInstance(CRYPTO_HASH_ALGORITHM);
+        } catch (NoSuchAlgorithmException e) {
+            LOGGER.error("Can't digest the message. {}", e.getMessage(), e);
+        }
+        return Objects.requireNonNull(messageDigest).digest(data.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String hexHash(String message) throws NoSuchAlgorithmException {
+    public String hexHash(String message) {
         return encodingUtility.bytesToHex(sha256(message));
     }
 

@@ -5,17 +5,18 @@ import java.math.BigDecimal;
 import java.security.PublicKey;
 import java.util.Objects;
 
-public class OutTransaction implements Serializable {
+/**
+ * The {@code OutgoingTransaction} class represents transaction going from the wallet.
+ * It contains recipient wallet address and amount.
+ */
+public class OutgoingTransaction implements Serializable {
 
     private PublicKey recipientAddress;
     private BigDecimal amount;
 
-    public OutTransaction(PublicKey recipientAddress, BigDecimal amount) {
+    public OutgoingTransaction(PublicKey recipientAddress, BigDecimal amount) {
         this.recipientAddress = recipientAddress;
         this.amount = amount;
-    }
-
-    public OutTransaction() {
     }
 
     public PublicKey getRecipientAddress() {
@@ -46,14 +47,13 @@ public class OutTransaction implements Serializable {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        OutTransaction that = (OutTransaction) o;
+        OutgoingTransaction that = (OutgoingTransaction) o;
         return Objects.equals(recipientAddress, that.recipientAddress) &&
                 Objects.equals(amount, that.amount);
     }
 
     @Override
     public int hashCode() {
-
         return Objects.hash(recipientAddress, amount);
     }
 

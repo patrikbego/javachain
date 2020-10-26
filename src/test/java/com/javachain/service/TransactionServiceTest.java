@@ -11,11 +11,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
-import static org.assertj.core.api.Java6Assertions.assertThat;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,9 +36,9 @@ class TransactionServiceTest {
     @Mock
     Block block;
     @Mock
-    OutTransaction outTransaction;
+    OutgoingTransaction outTransaction;
     @Mock
-    InTransaction inTransaction;
+    IncomingTransaction inTransaction;
     @Mock
     EncryptionUtility encryptionUtility;
 
@@ -52,8 +53,8 @@ class TransactionServiceTest {
         when(encryptionUtility.sign(anyString(), eq(privateKey))).thenReturn("123");
         //then
         Transaction transaction = transactionService.send(senderWallet, false, receiversWallet);
-        assertThat(transaction).isNotNull();
-        assertThat(transaction.getWallet()).isEqualTo(senderWallet);
+        assertNotNull(transaction);
+        assertEquals(transaction.getWallet(), senderWallet);
     }
 
     @Test
@@ -63,13 +64,13 @@ class TransactionServiceTest {
         PublicKey publicKey = eu.generateKeyPair().getPublic();
         //when
         when(senderWallet.getBlockchain()).thenReturn(block);
-        when(block.getTransactionList()).thenReturn(Arrays.asList(transaction));
-        when(transaction.getOutTransactions()).thenReturn(Arrays.asList(outTransaction));
+        when(block.getTransactionList()).thenReturn(Collections.singletonList(transaction));
+        when(transaction.getOutgoingTransactions()).thenReturn(Collections.singletonList(outTransaction));
         when(outTransaction.getRecipientAddress()).thenReturn(publicKey);
-        when(senderWallet.getPublickey()).thenReturn(publicKey);
+        when(senderWallet.getPublicKey()).thenReturn(publicKey);
         //then
-        List<InTransaction> inTransactions = transactionService.getPreviousInTransactions(senderWallet);
-        assertThat(inTransactions.size()).isEqualTo(1);
+        List<IncomingTransaction> inTransactions = transactionService.getPreviousInTransactions(senderWallet);
+        assertEquals(1, inTransactions.size());
     }
 
     @Test
@@ -84,7 +85,7 @@ class TransactionServiceTest {
     void validateTransaction1() throws Exception {
         //given
         //when
-        when(transaction.getInTransactions()).thenReturn(Arrays.asList(inTransaction));
+        when(transaction.getIncomingTransactions()).thenReturn(Collections.singletonList(inTransaction));
         when(inTransaction.getRecipient()).thenReturn(outTransaction);
         //then
         assertFalse(transactionService.validateTransaction(transaction));
@@ -96,14 +97,13 @@ class TransactionServiceTest {
         //when
         when(transaction.getFee()).thenReturn(BigDecimal.ONE);
         //then
-        assertThat(transactionService.computeTotalFee(Arrays.asList(transaction))).isEqualTo(BigDecimal.ONE);
+        assertEquals(BigDecimal.ONE, transactionService.computeTotalFee(Collections.singletonList(transaction)));
     }
 
-    @Test
-//TODO
-    void fee() {
-        //then
+//    TODO @Test
+//    void fee() {
+//        //then
 //        assertThat(transactionService.fee(Arrays.asList(inTransaction), Arrays.asList(outTransaction))).isEqualTo(BigDecimal.ZERO);
-    }
+//    }
 
 }

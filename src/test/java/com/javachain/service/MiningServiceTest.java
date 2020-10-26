@@ -10,27 +10,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MiningServiceTest {
 
-    private MiningService miningService = new MiningService();
+    final EncodingUtility encodingUtility = new EncodingUtility();
+    final MiningService miningService = new MiningService(new HashingUtility(encodingUtility), encodingUtility);
+
+//    @Before
+//    public void given() {
+//        EncodingUtility encodingUtility = new EncodingUtility();
+//        miningService = new MiningService(new HashingUtility(encodingUtility), encodingUtility);
+//    }
 
     @Test
-    void demoMiner() throws NoSuchAlgorithmException {
+    void demoMiner() {
         //given
-        EncodingUtility encodingUtility = new EncodingUtility();
-        HashingUtility hashingUtility = new HashingUtility();
-        miningService.setEncodingUtility(encodingUtility);
-        miningService.setHashingUtility(hashingUtility);
         //when
-        assertEquals(miningService.demoMiner(), "115d801f2e5f9b14e9b932bb6f71c00d52fc7922573d2d91dc46e4a00f8f4539");
+        //then
+        assertEquals("115d801f2e5f9b14e9b932bb6f71c00d52fc7922573d2d91dc46e4a00f8f4539", miningService.demoMiner());
     }
 
     @Test
-    void mineNonce() throws NoSuchAlgorithmException {
+    void mineNonce() {
         //given
-        EncodingUtility encodingUtility = new EncodingUtility();
-        HashingUtility hashingUtility = new HashingUtility();
-        miningService.setEncodingUtility(encodingUtility);
-        miningService.setHashingUtility(hashingUtility);
         //when
+        //then
         assertEquals("23", miningService.mineNonce("42", 1));
         assertEquals("2272", miningService.mineNonce("42", 3));
         assertEquals("879", miningService.mineNonce("Z6AR67BMX7", 3));
@@ -40,12 +41,8 @@ class MiningServiceTest {
     }
 
     @Test
-    void mineDigest() throws NoSuchAlgorithmException {
+    void mineDigest() {
         //given
-        EncodingUtility encodingUtility = new EncodingUtility();
-        HashingUtility hashingUtility = new HashingUtility();
-        miningService.setEncodingUtility(encodingUtility);
-        miningService.setHashingUtility(hashingUtility);
         //when
         assertEquals("190510626ea606a4d5e2dbb4136665d8b6a65cdaaaec3ffd7050310533643d1d", miningService.mineDigest("42", 1));
         assertEquals("111f1b7113e7c14a933421251b677a0f2493f65347976c64ada8cfc1e91229c0", miningService.mineDigest("42", 3));
@@ -57,23 +54,15 @@ class MiningServiceTest {
 
     @Test
     void generatePrefix() {
+        EncodingUtility encodingUtility = new EncodingUtility();
+        MiningService miningService = new MiningService(new HashingUtility(encodingUtility), encodingUtility);
         assertEquals("11111", miningService.generatePrefix(5));
     }
 
     @Test
     void mine() throws NoSuchAlgorithmException {
+        EncodingUtility encodingUtility = new EncodingUtility();
+        MiningService miningService = new MiningService(new HashingUtility(encodingUtility), encodingUtility);
         assertEquals(miningService.mine("test", 1), miningService.mine("test", 1));
-    }
-
-    @Test
-    void setHashingUtility() {
-    }
-
-    @Test
-    void setEncodingUtility() {
-    }
-
-    @Test
-    void setTransactionService() {
     }
 }

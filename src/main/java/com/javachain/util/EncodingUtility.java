@@ -1,8 +1,10 @@
 package com.javachain.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import javax.xml.bind.DatatypeConverter;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -19,36 +21,47 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class EncodingUtility {
 
-    public String bytesToHex1(byte[] hash) {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EncodingUtility.class);
+
+    public String bytesToHex(byte[] bytes) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte byt : bytes) {
+            hexString.append(Integer.toString((byt & 0xff) + 0x100, 16).substring(1));
+        }
+        return hexString.toString();
+    }
+
+    public String bytesToHexJ5(byte[] hash) {
+        LOGGER.debug("Running unoptimized bytes to hex method.");
         StringBuffer hexString = new StringBuffer();
         for (int i = 0; i < hash.length; i++) {
             String hex = Integer.toHexString(0xff & hash[i]);
-            if (hex.length() == 1) hexString.append('0');
+            if (hex.length() == 1) {
+                hexString.append('0');
+            }
             hexString.append(hex);
         }
         return hexString.toString();
     }
 
-    public String bytesToHex2(byte[] hash) {
-        StringBuffer hexString = new StringBuffer();
+    public String bytesToHexJ11(byte[] hash) {
+        LOGGER.debug("Running optimized bytes to hex method.");
+        StringBuilder hexString = new StringBuilder();
         for (byte aHash : hash) {
             String hex = Integer.toHexString(0xff & aHash);
-            if (hex.length() == 1)
+            if (hex.length() == 1) {
                 hexString.append('0');
+            }
             hexString.append(hex);
         }
         return hexString.toString();
     }
 
     public String hexToString(String hexString) {
-        byte[] bytes = DatatypeConverter.parseHexBinary(hexString);
-        return new String(bytes, StandardCharsets.UTF_8);
-    }
-
-    public String bytesToHex(byte[] bytes) {
-        StringBuffer result = new StringBuffer();
-        for (byte byt : bytes) result.append(Integer.toString((byt & 0xff) + 0x100, 16).substring(1));
-        return result.toString();
+        int it = Integer.parseInt(hexString, 16);
+        BigInteger bigInt = BigInteger.valueOf(it);
+        byte[] bytearray = (bigInt.toByteArray());
+        return new String(bytearray, StandardCharsets.UTF_8);
     }
 
 }

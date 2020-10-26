@@ -8,6 +8,7 @@ import com.javachain.service.MiningService;
 import com.javachain.service.TransactionService;
 import com.javachain.service.WalletService;
 import com.javachain.util.EncryptionUtility;
+import com.javachain.util.HashingUtility;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,10 +18,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.shell.Shell;
+import org.springframework.shell.jline.InteractiveShellApplicationRunner;
+import org.springframework.shell.jline.ScriptShellApplicationRunner;
+import org.springframework.shell.result.DefaultResultHandler;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import java.math.BigDecimal;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -29,25 +32,33 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.jupiter.api.Assertions.*;
 
 
+
+@SpringBootTest(properties = {
+        InteractiveShellApplicationRunner.SPRING_SHELL_INTERACTIVE_ENABLED + "=false",
+        ScriptShellApplicationRunner.SPRING_SHELL_SCRIPT + ".enabled=false"
+})
 @RunWith(SpringRunner.class)
-@SpringBootTest
 @Import(TestApplicationRunner.class)
 public class JcApplicationIT {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JcApplicationIT.class);
-
     @Autowired
-    protected TransactionService transactionService;
+    EncryptionUtility encryptionUtility;
+    @Autowired
+    HashingUtility hashingUtility;
+    @Autowired
+    MiningService miningService;
+    @Autowired
+    TransactionService transactionService;
+    @Autowired
+    BlockService blockService;
     @Autowired
     protected WalletService walletService;
     @Autowired
-    protected MiningService miningService;
-    @Autowired
-    protected EncryptionUtility encryptionUtility;
-    @Autowired
-    protected BlockService blockService;
-    @Autowired
     private Shell shell;
+    @Autowired
+    private DefaultResultHandler resultHandler;
+
 
     protected Wallet patriksWallet;
     protected Wallet donnasWallet;
@@ -59,29 +70,46 @@ public class JcApplicationIT {
 
     @Before
     public void given() throws Exception {
-
+        LOGGER.info("Wallets initialization started");
         initializeWallets();
+        assertEquals(new BigDecimal(0), blockService.computeBalance(patriksWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(johnsWallet));
 
+        LOGGER.info("Creating a new initial / genesis block");
         Block genesisBlock = blockService.mineBlock(patriksWallet, new ArrayList<>(), null);
 
         patriksWallet = walletService.syncBlockchain(patriksWallet, genesisBlock);
         johnsWallet = walletService.syncBlockchain(johnsWallet, genesisBlock);
         donnasWallet = walletService.syncBlockchain(donnasWallet, genesisBlock);
 
+        LOGGER.info("Block (in this case just initial block) is transferred to other wallets (each wallet does that)");
+        assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(johnsWallet));
+
+        LOGGER.info("5 tokens is being set to be sent to Johns and Donnas wallet (patriks wallet UI)");
         donnasWallet.setAmountToBeSent(new BigDecimal(5));
         johnsWallet.setAmountToBeSent(new BigDecimal(5));
+
+        LOGGER.info("Create first real transaction - send 5 tokens to Donna and 5 to John (patriks wallet UI)");
         t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
 
         Block b1 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), genesisBlock);
+        assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(johnsWallet));
+        LOGGER.info("Miner John approves the transaction (this could be any miner - first one wins the fee)");
 
         patriksWallet = walletService.syncBlockchain(patriksWallet, b1);
         johnsWallet = walletService.syncBlockchain(johnsWallet, b1);
         donnasWallet = walletService.syncBlockchain(donnasWallet, b1);
-
         assertEquals(new BigDecimal(15), blockService.computeBalance(patriksWallet));
         assertEquals(new BigDecimal(5), blockService.computeBalance(donnasWallet));
         assertEquals(new BigDecimal(30), blockService.computeBalance(johnsWallet));
+        LOGGER.info("Once the transaction is approved the wallets need to be synced again (syncing is ongoing/looping process)");
 
+        LOGGER.info("------------ Repeat the process - John will send 5 tokens to Donna and Patrik -------------");
         patriksWallet.setAmountToBeSent(new BigDecimal(5));
         donnasWallet.setAmountToBeSent(new BigDecimal(5));
         t3 = transactionService.send(johnsWallet, false, donnasWallet, patriksWallet);
@@ -120,62 +148,62 @@ public class JcApplicationIT {
 
 
     @Test
-    public void shellTestMine() throws NoSuchAlgorithmException {
+    public void shellTestMine() {
 
         assertEquals("35", shell.evaluate(() -> "miner 7 1"));
         miningService.mineNonce("test", 1);
     }
 
-    @Test
-    public void shellTestCreateWallet1() throws NoSuchAlgorithmException {
-        //creates new empty wallet
-        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
-        miningService.mineNonce("test", 1);
-    }
-
-    @Test
-    public void shellTestCreateWallet2() throws NoSuchAlgorithmException {
-        //creates new empty wallet2
-        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
-        miningService.mineNonce("test", 1);
-    }
-
-    @Test
-    public void shellTestMine1() throws NoSuchAlgorithmException {
-        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
-        miningService.mineNonce("test", 1);
-    }
-
-    @Test
-    public void shellTestSyncChain() throws NoSuchAlgorithmException {
-        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
-        miningService.mineNonce("test", 1);
-    }
-
-    @Test
-    public void shellTestTransaction1() throws NoSuchAlgorithmException {
-        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
-        miningService.mineNonce("test", 1);
-    }
-
-    @Test
-    public void shellTestTransaction2() throws NoSuchAlgorithmException {
-        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
-        miningService.mineNonce("test", 1);
-    }
+//    @Test
+//    public void shellTestCreateWallet1() throws NoSuchAlgorithmException {
+//        //creates new empty wallet
+//        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
+//        miningService.mineNonce("test", 1);
+//    }
+//
+//    @Test
+//    public void shellTestCreateWallet2() throws NoSuchAlgorithmException {
+//        //creates new empty wallet2
+//        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
+//        miningService.mineNonce("test", 1);
+//    }
+//
+//    @Test
+//    public void shellTestMine1() throws NoSuchAlgorithmException {
+//        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
+//        miningService.mineNonce("test", 1);
+//    }
+//
+//    @Test
+//    public void shellTestSyncChain() throws NoSuchAlgorithmException {
+//        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
+//        miningService.mineNonce("test", 1);
+//    }
+//
+//    @Test
+//    public void shellTestTransaction1() throws NoSuchAlgorithmException {
+//        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
+//        miningService.mineNonce("test", 1);
+//    }
+//
+//    @Test
+//    public void shellTestTransaction2() throws NoSuchAlgorithmException {
+//        assertEquals("35", shell.evaluate(() -> "miner 7 1"));
+//        miningService.mineNonce("test", 1);
+//    }
 
     /**
      * Step1
      */
     @Test
     public void testNewWallet() {
-        assertNotNull(patriksWallet.getPublickey());
-        assertEquals(patriksWallet.getSigner(), "patriks");
-        assertEquals(patriksWallet.getSignature(), null);
+        assertNotNull(patriksWallet.getPublicKey());
+        assertEquals("patriks", patriksWallet.getSigner());
+        assertNull(patriksWallet.getSignature());
 
-        assertNotNull(donnasWallet.getPublickey());
-        assertEquals(donnasWallet.getSigner(), "donnas");
-        assertEquals(donnasWallet.getSignature(), null);
+        assertNotNull(donnasWallet.getPublicKey());
+        assertEquals("donnas", donnasWallet.getSigner());
+        assertNull(donnasWallet.getSignature());
     }
 
     @Test
@@ -183,7 +211,8 @@ public class JcApplicationIT {
 
         initializeWallets();
 
-        Block b1 = blockService.mineBlock(patriksWallet, new ArrayList<>(), null);//todo replace this with hash code //this is new block, patrik should get 25
+        Block b1 = blockService.mineBlock(patriksWallet, new ArrayList<>(), null);//TODO replace this with hash code //this is new block, patrik should get 25
+        LOGGER.debug("Genesis block mined");
 
         donnasWallet.setAmountToBeSent(new BigDecimal(5));
         t2 = transactionService.send(johnsWallet, false, donnasWallet);
@@ -192,9 +221,9 @@ public class JcApplicationIT {
         assertEquals(blockService.computeBalance(donnasWallet), new BigDecimal(0));
         assertEquals(blockService.computeBalance(johnsWallet), new BigDecimal(0));
 
-        System.out.println("b1        : " + b1.getHash() + " with fee=" + transactionService.computeTotalFee(b1.getTransactionList()));
+        LOGGER.debug("b1        : " + b1.getHash() + " with fee=" + transactionService.computeTotalFee(b1.getTransactionList()));
 
-        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), b1); // this is new block john should get 25 coins
+        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), b1); // this is new block john should get 25 tokens
 
         patriksWallet.setAmountToBeSent(new BigDecimal(5));
         donnasWallet.setAmountToBeSent(new BigDecimal(5));
@@ -208,7 +237,7 @@ public class JcApplicationIT {
         assertTrue(transactionService.validateTransaction(t3));
         assertTrue(transactionService.validateTransaction(t4));
 
-        Block b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 coins
+        Block b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 tokens
 
         patriksWallet = walletService.syncBlockchain(patriksWallet, b3);
         johnsWallet = walletService.syncBlockchain(johnsWallet, b3);
@@ -216,15 +245,15 @@ public class JcApplicationIT {
 
         BigDecimal patriksCoins = blockService.computeBalance(patriksWallet);
         assertEquals(patriksCoins, new BigDecimal(31)); //25 + 1 + 5 ?30
-        System.out.println(String.format("Patrik  has %s javacoins", patriksCoins));
+        LOGGER.debug("Patrik  has {} javacoins\n", patriksCoins);
 
         BigDecimal donnasCoins = blockService.computeBalance(donnasWallet);
         assertEquals(donnasCoins, new BigDecimal(1)); // 5 + 5 - 9 ?7
-        System.out.println(String.format("Donna  has %s javacoins", donnasCoins));
+        LOGGER.debug("Donna  has {} javacoins\n", donnasCoins);
 
         BigDecimal johnsCoins = blockService.computeBalance(johnsWallet);
         assertEquals(johnsCoins, new BigDecimal(43)); // 50 - 15 + 8 = 43 ?38
-        System.out.println(String.format("John  has %s javacoins", johnsCoins));
+        LOGGER.debug("John  has {} javacoins\n", johnsCoins);
     }
 
     @Test
@@ -287,7 +316,7 @@ public class JcApplicationIT {
         assertEquals(new BigDecimal(5), blockService.computeBalance(donnasWallet));//inFromPatrik(5)
         assertEquals(new BigDecimal(30), blockService.computeBalance(johnsWallet));//inFromMining()
 
-        System.out.println("b1        : " + initialBlock.getHash() + " with fee=" + transactionService.computeTotalFee(initialBlock.getTransactionList()));
+        LOGGER.debug("b1        : " + initialBlock.getHash() + " with fee=" + transactionService.computeTotalFee(initialBlock.getTransactionList()));
 
         try {
             //Sync the wallet (t2, t21 are validated) this transaction will fail
@@ -295,7 +324,7 @@ public class JcApplicationIT {
             johnsWallet.setAmountToBeSent(new BigDecimal(3));
             t4 = transactionService.send(donnasWallet, false, johnsWallet);
         } catch (Exception e) {
-            System.out.println("Expected fail : transaction 3 was not yet added to the chain (t3 was not approved)");
+            LOGGER.debug("Expected fail : transaction 3 was not yet added to the chain (t3 was not approved)");
         }
 
         //TODO add to initial transaction created and check if we really need the wallet in transaction
@@ -307,9 +336,9 @@ public class JcApplicationIT {
         Block b2 = null;
         try { // case of not synced
             b2 = blockService.mineBlock(patriksWallet, Arrays.asList(t2, t3), initialBlock);
-            System.out.println("b2        : " + b2.getHash() + " with fee=" + transactionService.computeTotalFee(b2.getTransactionList()));
+            LOGGER.debug("b2        : " + b2.getHash() + " with fee=" + transactionService.computeTotalFee(b2.getTransactionList()));
         } catch (Exception e) {
-            System.out.println("Expected fail : initialBlock and transactions are already used");
+            LOGGER.debug("Expected fail : initialBlock and transactions are already used");
         }
 
 //        b2 = newblockService.mineBlock(patriksWallet, Arrays.asList(t2, t3), initialBlock);
@@ -322,9 +351,9 @@ public class JcApplicationIT {
         Block b3 = null;
         try {
             b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 coins
-            System.out.println(("b3        : " + b3.getHash() + " with fee=" + transactionService.computeTotalFee(b3.getTransactionList())));
+            LOGGER.debug(("b3        : " + b3.getHash() + " with fee=" + transactionService.computeTotalFee(b3.getTransactionList())));
         } catch (Exception e) {
-            System.out.println("Expected fail : initialBlock and transactions are already used");
+            LOGGER.debug("Expected fail : initialBlock and transactions are already used");
         }
 
         johnsWallet.setAmountToBeSent(BigDecimal.ONE);

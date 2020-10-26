@@ -1,6 +1,9 @@
 package com.javachain.util;
 
 import com.javachain.dto.Wallet;
+import com.javachain.service.BlockService;
+import com.javachain.service.MiningService;
+import com.javachain.service.TransactionService;
 import com.javachain.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,31 +15,36 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class EncryptionUtilityTest {
 
-    private String message = "test";
-    private EncryptionUtility encryptionUtility = new EncryptionUtility();
-    private WalletService walletService = new WalletService();
+    private final String message = "test";
+    private final EncryptionUtility encryptionUtility = new EncryptionUtility();
+    private final EncodingUtility encodingUtility = new EncodingUtility();
+    final HashingUtility hashingUtility = new HashingUtility(encodingUtility);
+    final MiningService miningService = new MiningService(hashingUtility, encodingUtility);
+    final TransactionService transactionService = new TransactionService(encryptionUtility, hashingUtility, miningService);
+    final BlockService blockService = new BlockService(encryptionUtility, transactionService, hashingUtility, miningService);
+    private final WalletService walletService = new WalletService(encryptionUtility, hashingUtility, miningService,
+            transactionService, blockService);
     private Wallet patriksWallet;
 
     @BeforeEach
     void setUpWallet() throws Exception {
-        walletService.setEncryptionUtility(encryptionUtility);
         patriksWallet = walletService.generateNewWallet("patriks");
     }
 
     @Test
-    void sign() throws Exception {
-        assertEquals(encryptionUtility.sign("test", patriksWallet.getPrivateKey()).length(), 344);
+    void sign() {
+        assertEquals(344, encryptionUtility.sign(message, patriksWallet.getPrivateKey()).length());
     }
 
     @Test
     void verifySignature() throws Exception {
 
         String message1 = "test1";
-        String signature = encryptionUtility.sign("test", patriksWallet.getPrivateKey());
+        String signature = encryptionUtility.sign(message, patriksWallet.getPrivateKey());
 
-        assertTrue(encryptionUtility.verifySignature(message, signature, patriksWallet.getPublickey()));
+        assertTrue(encryptionUtility.verifySignature(message, signature, patriksWallet.getPublicKey()));
 
-        assertFalse(encryptionUtility.verifySignature(message1, signature, patriksWallet.getPublickey()));
+        assertFalse(encryptionUtility.verifySignature(message1, signature, patriksWallet.getPublicKey()));
 
     }
 
@@ -45,7 +53,7 @@ class EncryptionUtilityTest {
 
         //First generate a public/private key pair
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-        keyGen.initialize(512);
+        keyGen.initialize(1024);
         KeyPair keyPair = keyGen.genKeyPair();
         //KeyPair pair = getKeyPairFromKeyStore();
 
@@ -54,7 +62,7 @@ class EncryptionUtilityTest {
 
         //Encrypt the message
         String cipherText = encryptionUtility.encrypt(message, keyPair.getPublic());
-        assertEquals(cipherText.length(), 88);
+        assertEquals(172, cipherText.length());
 
         //Now decrypt it
         String decipheredMessage = encryptionUtility.decrypt(cipherText, keyPair.getPrivate());
@@ -67,7 +75,7 @@ class EncryptionUtilityTest {
 
         KeyPair keyPair1 = encryptionUtility.generateKeyPair();
         KeyPairGenerator keyGen1 = KeyPairGenerator.getInstance("RSA");
-        keyGen1.initialize(512);
+        keyGen1.initialize(1024);
         KeyPair keyPair = keyGen1.genKeyPair();
 
         String message = "Good example of encryption";
@@ -83,7 +91,7 @@ class EncryptionUtilityTest {
     void generateHexStringKeyPair() throws Exception {
         KeyPair keyPair1 = encryptionUtility.generateKeyPair();
         assertNotNull(encryptionUtility.generateHexStringKey(keyPair1, true));
-        assertEquals(encryptionUtility.generateHexStringKey(keyPair1, true).length(), 588);
+        assertEquals(588, encryptionUtility.generateHexStringKey(keyPair1, true).length());
         assertNotNull(encryptionUtility.generateHexStringKey(keyPair1, false));
         assertTrue(encryptionUtility.generateHexStringKey(keyPair1, false).length() >= 2432);
     }
@@ -93,7 +101,7 @@ class EncryptionUtilityTest {
         KeyPair keyPair = encryptionUtility.generateKeyPair();
         assertNotNull(keyPair);
         assertNotNull(keyPair.getPrivate());
-        assertEquals(keyPair.getPublic().getAlgorithm(), "RSA");
+        assertEquals("RSA", keyPair.getPublic().getAlgorithm());
     }
 
 }

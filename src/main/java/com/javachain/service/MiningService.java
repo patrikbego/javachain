@@ -13,27 +13,32 @@ import java.security.NoSuchAlgorithmException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * The {@code MiningService} class is used for mining related functionalities.
+ * <p>
+ * It has supporting methods regarding mining (miningNonce, miningHash).
+ */
 @Component
 public class MiningService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MiningService.class);
 
-    @Autowired
-    HashingUtility hashingUtility;
+    final HashingUtility hashingUtility;
+
+    final EncodingUtility encodingUtility;
 
     @Autowired
-    EncodingUtility encodingUtility;
-
-    @Autowired
-    TransactionService transactionService;
+    public MiningService(HashingUtility hashingUtility, EncodingUtility encodingUtility) {
+        this.hashingUtility = hashingUtility;
+        this.encodingUtility = encodingUtility;
+    }
 
     /**
      * A simple demonstration on how the mining works
      *
-     * @return
-     * @throws NoSuchAlgorithmException
+     * @return String digest
      */
-    public String demoMiner() throws NoSuchAlgorithmException {
+    public String demoMiner() {
         String message = "hello javacoin";
         for (int i = 0; i < 1000; i++) {
             String digest = encodingUtility.bytesToHex(hashingUtility.sha256(message + i));
@@ -58,33 +63,32 @@ public class MiningService {
      * In bitcoin, this is called the mining difficulty. Note that bitcoin doesn't require a number of leading digits,
      * but instead requires the hash to be below a certain value. But it's the same idea.
      *
-     * @param message
-     * @param difficulty
-     * @return
-     * @throws NoSuchAlgorithmException
+     * @param message    String
+     * @param difficulty int
+     * @return String
      */
-    public String mineNonce(String message, int difficulty) throws NoSuchAlgorithmException {
-        assert (difficulty >= 1);
+    public String mineNonce(String message, int difficulty) {
         long nrOfIterationsToMineNonce = 0;
         String prefix = generatePrefix(difficulty);
-        while (true) {
+        while (difficulty >= 1) { // extra precondition check if difficulty is bigger or higher than 1. It is suppose to be always true.
             String digest = hashingUtility.hexHash(message + nrOfIterationsToMineNonce);
             if (digest.startsWith(prefix))
                 return String.valueOf(nrOfIterationsToMineNonce);
             nrOfIterationsToMineNonce += 1;
         }
+        return String.valueOf(nrOfIterationsToMineNonce);
     }
 
-    public String mineDigest(String message, int difficulty) throws NoSuchAlgorithmException {
-        assert (difficulty >= 1);
+    public String mineDigest(String message, int difficulty) {
         long nrOfIterationsToMineNonce = 0;
         String prefix = generatePrefix(difficulty);
-        while (true) {
+        while (difficulty >= 1) { // extra precondition check if difficulty is bigger or higher than 1. It is suppose to be always true.
             String digest = hashingUtility.hexHash(message + nrOfIterationsToMineNonce);
             if (digest.startsWith(prefix))
                 return digest;
             nrOfIterationsToMineNonce += 1;
         }
+        return String.valueOf(nrOfIterationsToMineNonce);
     }
 
     public String generatePrefix(int difficulty) {
@@ -97,12 +101,11 @@ public class MiningService {
     }
 
     public String mine(String message, int difficulty) throws NoSuchAlgorithmException {
-        assert (difficulty >= 1);
         long nrOfIterationsToMineNonce = 0;
-        MessageDigest digest = MessageDigest.getInstance(hashingUtility.CRYPTO_HASH_ALGORITHM);
+        MessageDigest digest = MessageDigest.getInstance(HashingUtility.CRYPTO_HASH_ALGORITHM);
         String prefix = IntStream.range(0, difficulty).mapToObj(j -> "1").collect(Collectors.joining());
         StringBuilder result = new StringBuilder();
-        while (true) {
+        while (difficulty >= 1) { // extra precondition check if difficulty is bigger or higher than 1. It is suppose to be always true.
 
             result.setLength(0);
             byte[] bytes = digest.digest((message + nrOfIterationsToMineNonce).getBytes(StandardCharsets.UTF_8));
@@ -115,17 +118,7 @@ public class MiningService {
                 return String.valueOf(nrOfIterationsToMineNonce);
             nrOfIterationsToMineNonce += 1;
         }
+        return String.valueOf(nrOfIterationsToMineNonce);
     }
 
-    public void setHashingUtility(HashingUtility hashingUtility) {
-        this.hashingUtility = hashingUtility;
-    }
-
-    public void setEncodingUtility(EncodingUtility encodingUtility) {
-        this.encodingUtility = encodingUtility;
-    }
-
-    public void setTransactionService(TransactionService transactionService) {
-        this.transactionService = transactionService;
-    }
 }

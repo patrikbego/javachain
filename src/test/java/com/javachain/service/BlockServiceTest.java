@@ -1,7 +1,7 @@
 package com.javachain.service;
 
 import com.javachain.dto.Block;
-import com.javachain.dto.OutTransaction;
+import com.javachain.dto.OutgoingTransaction;
 import com.javachain.dto.Transaction;
 import com.javachain.dto.Wallet;
 import com.javachain.util.EncryptionUtility;
@@ -16,7 +16,7 @@ import java.math.BigDecimal;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,7 +45,7 @@ class BlockServiceTest {
     EncryptionUtility encUtil;
 
     @Test
-    void shouldInjectMocks() throws Exception {
+    void shouldInjectMocks() {
         assertThat(blockService).isNotNull();
         assertThat(transactionService).isNotNull();
         assertThat(transaction).isNotNull();
@@ -56,16 +56,16 @@ class BlockServiceTest {
     @Test
     void mineBlock() throws Throwable {
         //given
-        Executable e = () -> blockService.mineBlock(wallet, Arrays.asList(transaction), null);
+        Executable e = () -> blockService.mineBlock(wallet, Collections.singletonList(transaction), null);
         //then
         assertThrows(Exception.class, e);
 
         //given
         EncryptionUtility eu = new EncryptionUtility();
         PrivateKey privateKey = eu.generateKeyPair().getPrivate();
-        OutTransaction outTransaction = new OutTransaction(wallet.address(), BigDecimal.ONE);
+        OutgoingTransaction outTransaction = new OutgoingTransaction(wallet.address(), BigDecimal.ONE);
         Transaction transaction = new Transaction();
-        transaction.setOutTransactions(Arrays.asList(outTransaction));
+        transaction.setOutgoingTransactions(Collections.singletonList(outTransaction));
         //when
         when(transactionService.send(wallet, true, wallet)).thenReturn(transaction);
         when(miningService.mineNonce(anyString(), anyInt())).thenReturn("123");
@@ -86,11 +86,11 @@ class BlockServiceTest {
         //given
         EncryptionUtility eu = new EncryptionUtility();
         PublicKey publicKey = eu.generateKeyPair().getPublic();
-        OutTransaction outTransaction = new OutTransaction(publicKey, BigDecimal.ONE);
+        OutgoingTransaction outTransaction = new OutgoingTransaction(publicKey, BigDecimal.ONE);
         outTransaction.setRecipientAddress(publicKey);
         Transaction transaction = spy(new Transaction());
-        transaction.setOutTransactions(Arrays.asList(outTransaction));
-        Block block = new Block(publicKey, Arrays.asList(transaction), null);
+        transaction.setOutgoingTransactions(Collections.singletonList(outTransaction));
+        Block block = new Block(publicKey, Collections.singletonList(transaction), null);
         //when
         when(wallet.getBlockchain()).thenReturn(block);
         wallet.setBlockchain(block);
@@ -108,11 +108,11 @@ class BlockServiceTest {
         //given
         EncryptionUtility eu = new EncryptionUtility();
         PublicKey publicKey = eu.generateKeyPair().getPublic();
-        OutTransaction outTransaction = new OutTransaction(publicKey, BigDecimal.ONE);
+        OutgoingTransaction outTransaction = new OutgoingTransaction(publicKey, BigDecimal.ONE);
         outTransaction.setRecipientAddress(publicKey);
         Transaction transaction = spy(new Transaction());
-        transaction.setOutTransactions(Arrays.asList(outTransaction));
-        Block block = spy(new Block(publicKey, Arrays.asList(transaction), null));
+        transaction.setOutgoingTransactions(Collections.singletonList(outTransaction));
+        Block block = spy(new Block(publicKey, Collections.singletonList(transaction), null));
         //when
         when(block.getHash()).thenReturn("1123");
         when(miningService.generatePrefix(2)).thenReturn("11");
@@ -124,7 +124,6 @@ class BlockServiceTest {
 
     @Test
     void isNewBlockBigger() {
-
         assertTrue(blockService.isNewBlockBigger(block, newBlock));
     }
 

@@ -3,15 +3,14 @@ package com.javachain.util;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
-import java.security.NoSuchAlgorithmException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class HashingUtilityTest {
 
-    private HashingUtility hashingUtility = new HashingUtility();
-    private EncodingUtility encodingUtility = new EncodingUtility();
+    private final EncodingUtility encodingUtility = new EncodingUtility();
+    private final HashingUtility hashingUtility = new HashingUtility(encodingUtility);
 
     @Test
     void getMD5() {
@@ -29,14 +28,14 @@ class HashingUtilityTest {
     }
 
     @Test
-    void sha256() throws NoSuchAlgorithmException {
+    void sha256() {
         assertNotNull(hashingUtility.sha256("test"));
         assertEquals("龆킁行絥騯\uEAA0앚퀕ꎿ伛⬋般텝氕냰ਈ", new String(hashingUtility.sha256("test"), StandardCharsets.UTF_16));
         assertEquals("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", encodingUtility.bytesToHex(hashingUtility.sha256("test")));
     }
 
     @Test
-    void hexHash() throws NoSuchAlgorithmException {
+    void hexHash() {
         assertEquals("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", hashingUtility.hexHash("test"));
     }
 }

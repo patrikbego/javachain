@@ -1,24 +1,54 @@
 package com.javachain.dto;
 
+import java.io.Serializable;
 import java.security.PublicKey;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
-public class Block {
+/**
+ * The {@code Block} class represents a block chain.
+ * Each block is a growing chain of blocks, that are linked using cryptography.
+ * Once block is mined/approved it's value cannot be changed.
+ * <p>
+ * Each block contains:
+ * <ul>
+ *     <li>list of transactions,</li>
+ *     <li>the nonce, is the number that block chain miners are trying to solve,</li>
+ *     <li>the hash (fixed length presentation of the block/data),</li>
+ *     <li>address of a miner,</li>
+ *     <li>creation date.</li>
+ * </ul>
+ *
+ * <p>
+ * To initialize Block we need to pass into constructor:
+ * <ul>
+ *     <li>miners wallet address</li>
+ *     <li>list of transactions allocated to this block</li>
+ *     <li>previous Block</li>
+ * </ul>
+ * <p>
+ * For example:
+ *  <blockquote><pre>
+ *   Block block = new Block(wallet.address(), Arrays.asList(tr1, tr2, tr3), previousBlock);
+ *  </pre></blockquote><p>
+ */
+public class Block implements Serializable {
 
     private String nonce;
     private String hash;
     private List<Transaction> transactionList;
-    private Block ancestor;
-    private PublicKey minerAddress;
+    private Block previousBlock;
+    private PublicKey minersAddress;
+    private final Instant dateCreated;
     private boolean skipVerification;
     private boolean includeHash;
-    private boolean initial = false;
 
-    public Block(PublicKey address, List<Transaction> transactions, Block ancestor) {
-        this.minerAddress = address;
+    public Block(PublicKey minersAddress, List<Transaction> transactions, Block previousBlock) {
+        this.minersAddress = minersAddress;
         this.transactionList = transactions;
-        this.ancestor = ancestor;
+        this.previousBlock = previousBlock;
+        this.dateCreated = Instant.now();
         includeHash = false;
     }
 
@@ -28,8 +58,8 @@ public class Block {
                 (includeHash ? "nonce='" + nonce + '\'' +
                         ", hash='" + hash + '\'' : "") +
                 ", transactionList=" + transactionList +
-                ", ancestor=" + ancestor +
-                ", minerAddress=" + minerAddress +
+                ", ancestor=" + previousBlock +
+                ", minerAddress=" + minersAddress +
                 ", skipVerification=" + skipVerification +
                 '}';
     }
@@ -41,16 +71,16 @@ public class Block {
         Block block = (Block) o;
         return skipVerification == block.skipVerification &&
                 includeHash == block.includeHash &&
-                initial == block.initial &&
                 Objects.equals(nonce, block.nonce) &&
+                Objects.equals(dateCreated, block.dateCreated) &&
                 Objects.equals(hash, block.hash) &&
-                Objects.equals(ancestor, block.ancestor) &&
-                Objects.equals(minerAddress, block.minerAddress);
+                Objects.equals(previousBlock, block.previousBlock) &&
+                Objects.equals(minersAddress, block.minersAddress);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(nonce, hash, ancestor, minerAddress, skipVerification, includeHash, initial);
+        return Objects.hash(nonce, hash, previousBlock, minersAddress, skipVerification, includeHash, dateCreated);
     }
 
     public List<Transaction> getTransactionList() {
@@ -62,12 +92,12 @@ public class Block {
     }
 
 
-    public Block getAncestor() {
-        return ancestor;
+    public Block getPreviousBlock() {
+        return previousBlock;
     }
 
-    public void setAncestor(Block ancestor) {
-        this.ancestor = ancestor;
+    public void setPreviousBlock(Block previousBlock) {
+        this.previousBlock = previousBlock;
     }
 
     public String getNonce() {
@@ -86,12 +116,12 @@ public class Block {
         this.hash = hash;
     }
 
-    public PublicKey getMinerAddress() {
-        return minerAddress;
+    public PublicKey getMinersAddress() {
+        return minersAddress;
     }
 
-    public void setMinerAddress(PublicKey minerAddress) {
-        this.minerAddress = minerAddress;
+    public void setMinersAddress(PublicKey minersAddress) {
+        this.minersAddress = minersAddress;
     }
 
     public boolean isSkipVerification() {

@@ -1,7 +1,7 @@
 package com.javachain;
 
 import com.javachain.dto.Block;
-import com.javachain.dto.OutTransaction;
+import com.javachain.dto.OutgoingTransaction;
 import com.javachain.dto.Wallet;
 import org.junit.Test;
 
@@ -11,10 +11,9 @@ import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class BlockServiceIT extends JcApplicationIT {
+public class BlockServiceIT extends JcApplicationIT {
 
     private Block block;
-    private OutTransaction outTransaction;
     private Wallet testWallet;
 
     @Test
@@ -26,16 +25,16 @@ class BlockServiceIT extends JcApplicationIT {
         t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
         //when new block
         block = blockService.mineBlock(testWallet, new ArrayList<>(), null);
-        outTransaction = block.getTransactionList().get(0).getOutTransactions().get(0);
+        OutgoingTransaction outTransaction = block.getTransactionList().get(0).getOutgoingTransactions().get(0);
         //then
-        assertEquals(block.getTransactionList().size(), 1);
+        assertEquals(1, block.getTransactionList().size());
         assertEquals(outTransaction.getAmount(), new BigDecimal(25));
         assertEquals(outTransaction.getRecipientAddress(), testWallet.address());
 
         //when existing block
         Block block1 = blockService.mineBlock(testWallet, Collections.singletonList(t2), block);
         //then
-        assertEquals(block1.getTransactionList().size(), 2);
+        assertEquals(2, block1.getTransactionList().size());
     }
 
     @Test
@@ -67,7 +66,6 @@ class BlockServiceIT extends JcApplicationIT {
         block = blockService.mineBlock(testWallet, new ArrayList<>(), null);
 
         assertTrue(blockService.verifyBlock(block));
-
     }
 
 }

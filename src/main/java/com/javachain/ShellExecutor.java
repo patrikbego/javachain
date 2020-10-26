@@ -6,8 +6,6 @@ import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
 
-import java.security.NoSuchAlgorithmException;
-
 @ShellComponent
 public class ShellExecutor {
 
@@ -20,9 +18,9 @@ public class ShellExecutor {
 
     @ShellMethod("Work in progress")
     public String miner(
-            @ShellOption String text,
-            @ShellOption int difficulty) throws NoSuchAlgorithmException {
+            @ShellOption String data,
+            @ShellOption int difficulty) {
         // invoke service
-        return service.mineNonce(text, difficulty);
+        return service.mineNonce(data, difficulty);
     }
 }

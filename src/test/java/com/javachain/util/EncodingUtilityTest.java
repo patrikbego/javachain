@@ -6,30 +6,30 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class EncodingUtilityTest {
 
-    private byte[] bytes = {11, 22, 33};
-    private EncodingUtility encodingUtility = new EncodingUtility();
+    private final byte[] bytes = {11, 22, 33};
+    private final EncodingUtility encodingUtility = new EncodingUtility();
 
     @Test
-    void bytesToHex1() {
-        assertEquals(encodingUtility.bytesToHex1("123".getBytes()), "313233");
-        assertEquals(encodingUtility.hexToString(encodingUtility.bytesToHex1("test".getBytes())), "test");
+    void bytesToHexJ5() {
+        assertEquals("313233", encodingUtility.bytesToHexJ5("123".getBytes()));
+        assertEquals("test", encodingUtility.hexToString(encodingUtility.bytesToHexJ5("test".getBytes())));
     }
 
     @Test
-    void bytesToHex2() {
-        assertEquals(encodingUtility.hexToString(encodingUtility.bytesToHex2(bytes)), "\u000B\u0016!");
-        assertEquals(encodingUtility.hexToString(encodingUtility.bytesToHex2("test".getBytes())), "test");
+    void bytesToHexJ11() {
+        assertEquals("\u000B\u0016!", encodingUtility.hexToString(encodingUtility.bytesToHexJ11(bytes)));
+        assertEquals("test", encodingUtility.hexToString(encodingUtility.bytesToHexJ11("test".getBytes())));
     }
 
     @Test
     void bytesToHex() {
-        assertEquals(encodingUtility.bytesToHex(bytes), "0b1621");
-        assertEquals(encodingUtility.hexToString(encodingUtility.bytesToHex("test".getBytes())), "test");
+        assertEquals("0b1621", encodingUtility.bytesToHex(bytes));
+        assertEquals("test", encodingUtility.hexToString(encodingUtility.bytesToHex("test".getBytes())));
     }
 
     @Test
     void hexToString() {
-        assertEquals(encodingUtility.hexToString("74657374"), "test");
+        assertEquals("test", encodingUtility.hexToString("74657374"));
     }
 
 

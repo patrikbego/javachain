@@ -3,12 +3,17 @@ package com.javachain.dto;
 import java.io.Serializable;
 import java.util.Objects;
 
-public class InTransaction implements Serializable {
+/**
+ * The {@code IncomingTransaction} class represents transaction coming into wallet.
+ * It contains the transaction itself (for verification reasons)
+ * and outPutIndex (position in a list of all incoming / outgoing transactions)
+ */
+public class IncomingTransaction implements Serializable {
 
-    private Transaction transaction;
-    private int outPutIndex;
+    private Transaction transaction; // TODO here for validation, consider refactoring
+    private final int outPutIndex;
 
-    public InTransaction(Transaction transaction, int outPutIndex) {
+    public IncomingTransaction(Transaction transaction, int outPutIndex) {
         this.transaction = transaction;
         this.outPutIndex = outPutIndex;
     }
@@ -21,9 +26,9 @@ public class InTransaction implements Serializable {
         this.transaction = transaction;
     }
 
-    public OutTransaction getRecipient() {
-        if (transaction.getOutTransactions().size() > 0) {
-            for (OutTransaction otr : getTransaction().getOutTransactions()) {
+    public OutgoingTransaction getRecipient() {
+        if (!transaction.getOutgoingTransactions().isEmpty()) {
+            for (OutgoingTransaction otr : getTransaction().getOutgoingTransactions()) {
                 if (otr.getRecipientAddress().equals(transaction.getWallet().address()))//TODO MAKE SURE THAT ALL OUT TRANSACTIONS GET MERGED INTO ONE OUT TRANSACTION PER USER
                     return otr;
             }
@@ -31,8 +36,8 @@ public class InTransaction implements Serializable {
         return null;
     }
 
-    public OutTransaction parentOutPut() {
-        return this.transaction.getOutTransactions().get(this.outPutIndex);
+    public OutgoingTransaction parentOutPut() {
+        return this.transaction.getOutgoingTransactions().get(this.outPutIndex);
     }
 
     @Override
@@ -47,14 +52,13 @@ public class InTransaction implements Serializable {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        InTransaction that = (InTransaction) o;
+        IncomingTransaction that = (IncomingTransaction) o;
         return outPutIndex == that.outPutIndex &&
                 Objects.equals(transaction, that.transaction);
     }
 
     @Override
     public int hashCode() {
-
         return Objects.hash(transaction, outPutIndex);
     }
 }

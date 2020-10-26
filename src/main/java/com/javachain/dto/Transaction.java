@@ -2,33 +2,53 @@ package com.javachain.dto;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * The {@code Transaction} class represents transaction made between wallets.
+ *
+ <p>
+ * Each transaction contains:
+ * <ul>
+ *     <li>list of incoming and outgoing sub transactions,</li>
+ *     <li>fee (miner gets once it is approved),</li>
+ *     <li>a digital signature ,</li>
+ *     <li>digital signature,</li>
+ *     <li>the amount we are sending (temporary storage),</li>
+ *     <li>wallet related fields - like keys, sender address ...</li>
+ * </ul>
+ */
 public class Transaction implements Serializable {
 
-    private List<InTransaction> inTransactions;
-    private List<OutTransaction> outTransactions;
+    public Transaction() {
+        dateCreated = Instant.now();
+    }
+
+    private List<IncomingTransaction> incomingTransactions;
+    private List<OutgoingTransaction> outgoingTransactions;
     private BigDecimal fee;
-    private String signature; //TODO change this into Signature
-    private Wallet wallet;
+    private String signature; //TODO change this into Signature object
+    private Wallet wallet; //TODO remove wallet object from transaction
+    private final Instant dateCreated;
     private boolean initial = false;
     private boolean includeSignature = true;
 
-    public List<InTransaction> getInTransactions() {
-        return inTransactions;
+    public List<IncomingTransaction> getIncomingTransactions() {
+        return incomingTransactions;
     }
 
-    public void setInTransactions(List<InTransaction> inTransactions) {
-        this.inTransactions = inTransactions;
+    public void setIncomingTransactions(List<IncomingTransaction> incomingTransactions) {
+        this.incomingTransactions = incomingTransactions;
     }
 
-    public List<OutTransaction> getOutTransactions() {
-        return outTransactions;
+    public List<OutgoingTransaction> getOutgoingTransactions() {
+        return outgoingTransactions;
     }
 
-    public void setOutTransactions(List<OutTransaction> outTransactions) {
-        this.outTransactions = outTransactions;
+    public void setOutgoingTransactions(List<OutgoingTransaction> outgoingTransactions) {
+        this.outgoingTransactions = outgoingTransactions;
     }
 
     public BigDecimal getFee() {
@@ -63,8 +83,8 @@ public class Transaction implements Serializable {
     @Override
     public String toString() {
         return "Transaction{" +
-                "inTransactions=" + inTransactions +
-                ", outTransactions=" + outTransactions +
+                "inTransactions=" + incomingTransactions +
+                ", outTransactions=" + outgoingTransactions +
 //                ", fee=" + fee +
                 (includeSignature ? ", signature='" + signature + '\'' : "") +
                 ", wallet=" + wallet +
@@ -77,17 +97,17 @@ public class Transaction implements Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Transaction that = (Transaction) o;
-        return Objects.equals(inTransactions, that.inTransactions) &&
-                Objects.equals(outTransactions, that.outTransactions) &&
+        return Objects.equals(incomingTransactions, that.incomingTransactions) &&
+                Objects.equals(outgoingTransactions, that.outgoingTransactions) &&
                 Objects.equals(fee, that.fee) &&
+                Objects.equals(dateCreated, that.dateCreated) &&
                 Objects.equals(signature, that.signature) &&
                 Objects.equals(wallet, that.wallet);
     }
 
     @Override
     public int hashCode() {
-
-        return Objects.hash(inTransactions, outTransactions, fee, signature, wallet);
+        return Objects.hash(incomingTransactions, outgoingTransactions, fee, signature, wallet, dateCreated);
     }
 
     public boolean isInitial() {
@@ -101,5 +121,4 @@ public class Transaction implements Serializable {
     public String getSignature() {
         return signature;
     }
-
 }

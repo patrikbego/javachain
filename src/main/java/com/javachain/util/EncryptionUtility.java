@@ -1,13 +1,21 @@
 package com.javachain.util;
 
 import com.javachain.dto.Wallet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.security.cert.CertificateException;
 import java.util.Base64;
+import java.util.Objects;
 
 /**
  * The purpose of encryption is to transform data in order to keep it secret from others,
@@ -23,42 +31,53 @@ import java.util.Base64;
  * e.g. aes, blowfish, rsa
  * <p>
  * e.g. of RSA encryption
- * Alice write a message
- * Alice encrypts it using Alice's PRIVATE key
- * Alice encrypts it again using Bob's PUBLIC key
- * Alice sends the results to Bob.
+ * U1 initiates a transaction
+ * U1 encrypts it using U1's PRIVATE key
+ * U1 encrypts it again using U2's PUBLIC key
+ * U1 sends the transaction to U2.
  * Then:
  * <p>
- * Bob receives a message (supposedly) from Alice
- * Bob decrypts it using Bob's PRIVATE key
- * Bob decrypts it again using Alice's PUBLIC key
- * If all goes well, Bob reads the message.
+ * U2 receives a transaction from U1
+ * U2 decrypts it using U2's PRIVATE key
+ * U2 decrypts it again using U1's PUBLIC key
+ * U2 is able to see the transaction details.
  **/
-
 @Service
 public class EncryptionUtility {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(EncryptionUtility.class);
+
     public static final String SHA_256_WITH_RSA = "SHA256withRSA";
-    public static final String RSA = "RSA";
+    public static final String KEY_ALGORITHM = "RSA";
+    public static final String CIPHER = "RSA/ECB/OAEPWITHSHA-256ANDMGF1PADDING";
 
-    public String sign(String message, PrivateKey privateKey) throws Exception {
-        Signature privateSignature = Signature.getInstance(SHA_256_WITH_RSA);//hash the data (SHA256) and encrypt it (RSA)
-        privateSignature.initSign(privateKey);
-        privateSignature.update(message.getBytes(StandardCharsets.UTF_8));
+    public String sign(String message, PrivateKey privateKey) {
+        Signature privateSignature;//hash the data (SHA256) and encrypt it (RSA)
+        byte[] signature = new byte[0];
+        try {
+            privateSignature = Signature.getInstance(SHA_256_WITH_RSA);
+            privateSignature.initSign(privateKey);
+            privateSignature.update(message.getBytes(StandardCharsets.UTF_8));
 
-        byte[] signature = privateSignature.sign();
-
+            signature = privateSignature.sign();
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            LOGGER.error("Can't sign the message {}", e.getMessage(), e);
+        }
         return Base64.getEncoder().encodeToString(signature);
     }
 
-    public boolean verifySignature(String signer, String signature, PublicKey publicKey) throws Exception {
-        Signature publicSignature = Signature.getInstance(SHA_256_WITH_RSA);//hash the data (SHA256) and encrypt it (RSA)
-        publicSignature.initVerify(publicKey);
-        publicSignature.update(signer.getBytes(StandardCharsets.UTF_8));
-
-        byte[] signatureBytes = Base64.getDecoder().decode(signature);
-
-        return publicSignature.verify(signatureBytes);
+    public boolean verifySignature(String signer, String signature, PublicKey publicKey) throws SignatureException {
+        Signature publicSignature = null;//hash the data (SHA256) and encrypt it (RSA)
+        byte[] signatureBytes = new byte[0];
+        try {
+            publicSignature = Signature.getInstance(SHA_256_WITH_RSA);
+            publicSignature.initVerify(publicKey);
+            publicSignature.update(signer.getBytes(StandardCharsets.UTF_8));
+            signatureBytes = Base64.getDecoder().decode(signature);
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            LOGGER.error("Can't verify signature: {}", e.getMessage(), e);
+        }
+        return Objects.requireNonNull(publicSignature).verify(signatureBytes);
     }
 
     /**
@@ -68,8 +87,10 @@ public class EncryptionUtility {
      * well suited for encrypting large data sizes. The usual approach
      * would be to use a symmetric cipher like AES or Triple-DES, and then to use RSA just to encrypt the AES/Triple-DES key.
      */
-    public String encrypt(String plainText, PublicKey publicKey) throws Exception {
-        Cipher encryptCipher = Cipher.getInstance(RSA);
+    public String encrypt(String plainText, PublicKey publicKey)
+            throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException,
+            BadPaddingException, IllegalBlockSizeException {
+        Cipher encryptCipher = Cipher.getInstance(CIPHER);
         encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
         byte[] cipherText = encryptCipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
@@ -77,10 +98,12 @@ public class EncryptionUtility {
         return Base64.getEncoder().encodeToString(cipherText);
     }
 
-    public String decrypt(String cipherText, PrivateKey privateKey) throws Exception {
+    public String decrypt(String cipherText, PrivateKey privateKey)
+            throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException,
+            BadPaddingException, IllegalBlockSizeException {
         byte[] bytes = Base64.getDecoder().decode(cipherText);
 
-        Cipher decriptCipher = Cipher.getInstance(RSA);
+        Cipher decriptCipher = Cipher.getInstance(CIPHER);
         decriptCipher.init(Cipher.DECRYPT_MODE, privateKey);
 
         return new String(decriptCipher.doFinal(bytes), StandardCharsets.UTF_8);
@@ -100,13 +123,14 @@ public class EncryptionUtility {
     }
 
     //=============================================================================
-    public KeyPair generateKeyPair() throws Exception {
-        KeyPairGenerator generator = KeyPairGenerator.getInstance(RSA);
+    public KeyPair generateKeyPair() throws NoSuchAlgorithmException {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance(KEY_ALGORITHM);
         generator.initialize(2048, new SecureRandom());
         return generator.generateKeyPair();
     }
 
-    public KeyPair getKeyPairFromKeyStore() throws Exception {
+    public KeyPair getKeyPairFromKeyStore() throws KeyStoreException, CertificateException,
+            NoSuchAlgorithmException, IOException, UnrecoverableEntryException {
         //Generated with:
         //  keytool -genkeypair -alias mykey -storepass secret -keypass secret -keyalg RSA -keystore keystore.jks
 

@@ -27,8 +27,8 @@ public class WeaknessesIT extends JcApplicationIT {
         johnsWallet.setAmountToBeSent(new BigDecimal(8));
         t4 = transactionService.send(donnasWallet, false, johnsWallet);
 
-        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), b1); // this is new block john should get 25 coins
-//        System.out.println("b2        : " + b2.getHash() + " with fee=" + transactionService.computeTotalFee(b2.getTransactionList()));
+        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), b1); // this is new block john should get 25 tokens
+//        LOGGER.debug("b2        : " + b2.getHash() + " with fee=" + transactionService.computeTotalFee(b2.getTransactionList()));
 
         assertTrue(transactionService.validateTransaction(t2));
         assertTrue(transactionService.validateTransaction(t3));
@@ -38,7 +38,7 @@ public class WeaknessesIT extends JcApplicationIT {
         johnsWallet = walletService.syncBlockchain(johnsWallet, b2);
         donnasWallet = walletService.syncBlockchain(donnasWallet, b2);
 
-        Block b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 coins
+        Block b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 tokens
 
         patriksWallet = walletService.syncBlockchain(patriksWallet, b3);
         johnsWallet = walletService.syncBlockchain(johnsWallet, b3);
