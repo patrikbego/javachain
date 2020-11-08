@@ -225,8 +225,9 @@ network verification impossible by design. Blocks now also carry an explicit
 `previousHash` value (the real chain link) and a committed timestamp; both were missing
 from the mined message before.
 
-The fee is deliberately excluded from the signed payload until fees are actually
-implemented (`computeTotalFee` currently mutates the field as a side effect).
+The fee is deliberately excluded from the signed payload - but not because it is
+missing: it is fully DERIVED at validation time (inputs minus outputs), so there is
+nothing mutable to sneak past a signature. See FEES below.
 
 ## VERIFICATION AND CONSENSUS
 
@@ -237,8 +238,10 @@ block:
    "|nonce=" + nonce)`. Earlier versions only checked the leading-digits prefix, so any
    fabricated hash string passed as valid work.
 2. **Minting rules (coinbase)**: exactly one coinbase, at index 0, with no inputs,
-   paying exactly the `Consensus.BLOCK_INCENTIVE` to the miner, signed by the miner.
-   The old blanket "initial transaction -> valid" bypass allowed unlimited minting.
+   paying at least the `Consensus.BLOCK_INCENTIVE` to the miner, signed by the miner.
+   The exact payout (incentive plus sibling fees) is enforced by `verifyBlock()` - see
+   FEES below. The old blanket "initial transaction -> valid" bypass allowed unlimited
+   minting.
 3. **Ownership**: a spending transaction must reference resolvable outputs that all
    belong to one wallet, and its signature must verify against exactly that owner's key.
    No silent skips remain: an unresolvable input invalidates the transaction. Inputs
@@ -323,7 +326,31 @@ inputs, so a hand-built transaction could mint money by overspending. Both are f
 `FeesIT` pins each rule: fee collection by the miner, insufficient-funds rejection,
 overspend rejection, and the greedy-coinbase rejection.
 
-**WALLET**  
+## REMAINING GAPS
+
+An honest list of what this demo still does not do. Each item is self-contained and
+would make a natural next step - none of them undermines what is already proven above.
+
+- **Difficulty adjustment** - `Consensus.DIFFICULTY` is a constant (2). Real chains
+  retarget periodically so block times stay stable as hash power joins and leaves.
+  Here, mining difficulty never changes no matter how many peers are mining.
+- **A real UTXO set** - every validation and every balance computation walks the whole
+  chain looking for outputs (O(chain length) per operation). A maintained
+  unspent-outputs index would make both roughly O(1) - at the cost of some of the
+  beautiful simplicity of "the chain itself is the only state". Related quirk: input
+  selection (`getPreviousInTransactions`) only considers a wallet's outputs from the
+  single newest block that contains any.
+- **Sockets instead of files** - `ChainNode` peers exchange chains through a shared
+  directory with atomic renames. A real peer layer would swap the directory for TCP
+  connections; the validation and consensus logic would not change at all - which is
+  exactly why it lives isolated in the services.
+- **Fee-aware balance accounting** - `computeBalance()` is still the original
+  income-minus-outcome walk over a wallet's own chain view. A paid fee is not an
+  output anywhere on the chain, so it stays visible on the spender's side: a wallet
+  that paid a 2-coin fee reports 2 coins more than it economically owns (see the
+  comment in `FeesIT`). A UTXO-set balance would fix this as a side effect.
+
+## WALLET  
 A cryptocurrency wallet is the main "store" of blocks and credentials linked to users. 
 The keys linked in the wallet are used to encrypt/decrypt and track ownership of transactions.
 Each wallet communicates with another through its protocol  (this is mocked in the JavaChain project).
@@ -352,10 +379,8 @@ In JavaChain transaction contains:
     - List of InTransactions (that is constructed on InTransaction and OutputIndex of previous OutTransaction list 
     (they have to match)) // t5.setInTransactions(Arrays.asList(new InTransaction(t2, 2), new InTransaction(t4, 0))); 
     - List of Out transactions (money sent out of your wallet)
- - fee (miner gets once it is approved),
+ - fee (miner gets it once the block is approved; derived from inputs minus outputs, not part of the signed payload),
  - a digital signature,
- - digital signature,
- - the amount we are sending (temporary storage),
  - wallet related fields - like keys, sender address ...
  
 
@@ -403,14 +428,12 @@ assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
 assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
 assertEquals(new BigDecimal(0), blockService.computeBalance(johnsWallet));
 ```
-After the user has tokens, they can start doing transactions with each other. In this case, Patrik sent John and Donna 5 tokens.
+After the user has tokens, they can start doing transactions with each other. In this case, Patrik sent John and Donna 5 tokens each (recipients and amounts are explicit; his 25-coin output funds it, with the 15-coin surplus returned as change).
 ```
-LOGGER.info("5 tokens is being set to be sent to Johns and Donnas wallet (patriks wallet UI)");
-donnasWallet.setAmountToBeSent(new BigDecimal(5));
-johnsWallet.setAmountToBeSent(new BigDecimal(5));
-
 LOGGER.info("Create first real transaction - send 5 tokens to Donna and 5 to John (patriks wallet UI)");
-t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
+t2 = transactionService.send(patriksWallet, false, BigDecimal.ZERO,
+        new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)),
+        new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(5)));
 ```
 Transactions need to be validated, and when a miner does that, the balances change in user wallets. Here John validates the transactions 
 (is awarded 25 tokens) and receives the token from Patrik.
