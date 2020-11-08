@@ -45,16 +45,33 @@ class TransactionServiceTest {
 
     @Test
     void send() throws Exception {
-        //given
+        //given - a wallet owning one 10-coin output; it spends 1 and gets 9 change
         EncryptionUtility eu = new EncryptionUtility();
-        PrivateKey privateKey = eu.generateKeyPair().getPrivate();
-        //when
+        java.security.KeyPair keyPair = eu.generateKeyPair();
+        PublicKey publicKey = keyPair.getPublic();
+        PrivateKey privateKey = keyPair.getPrivate();
+
+        Transaction parent = new Transaction(); // funding tx paying senderWallet 10 coins
+        parent.setInitial(true);
+        parent.setOutgoingTransactions(Collections.singletonList(
+                new OutgoingTransaction(publicKey, BigDecimal.TEN)));
+        Block chain = new Block(publicKey, Collections.singletonList(parent), null);
+
+        when(senderWallet.getBlockchain()).thenReturn(chain);
+        when(senderWallet.getPublicKey()).thenReturn(publicKey);
+        when(senderWallet.address()).thenReturn(publicKey);
         when(senderWallet.getPrivateKey()).thenReturn(privateKey);
         when(encryptionUtility.sign(anyString(), eq(privateKey))).thenReturn("123");
-        //then
-        Transaction transaction = transactionService.send(senderWallet, false, receiversWallet);
+
+        //when
+        Transaction transaction = transactionService.send(senderWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(publicKey, BigDecimal.ONE));
+
+        //then - signed by the sender, with value conserved: 10 = 1 transferred + 9 change
         assertNotNull(transaction);
         assertEquals(transaction.getWallet(), senderWallet);
+        assertEquals(2, transaction.getOutgoingTransactions().size());
+        assertEquals(BigDecimal.ZERO, transaction.getFee());
     }
 
     @Test
@@ -87,12 +104,13 @@ class TransactionServiceTest {
         EncryptionUtility eu = new EncryptionUtility();
         java.security.KeyPair keyPair = eu.generateKeyPair();
         Wallet miner = new Wallet(keyPair.getPrivate(), keyPair.getPublic(), "miner", null);
-        miner.setAmountToBeSent(com.javachain.service.Consensus.BLOCK_INCENTIVE);
         when(encryptionUtility.sign(anyString(), eq(keyPair.getPrivate())))
                 .thenAnswer(inv -> eu.sign(inv.getArgument(0), keyPair.getPrivate()));
         when(encryptionUtility.verifySignature(anyString(), anyString(), eq(keyPair.getPublic())))
                 .thenAnswer(inv -> eu.verifySignature(inv.getArgument(0), inv.getArgument(1), keyPair.getPublic()));
-        Transaction coinbase = transactionService.send(miner, true, miner);
+        Transaction coinbase = transactionService.send(miner, true, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(miner.getPublicKey(),
+                        com.javachain.service.Consensus.BLOCK_INCENTIVE));
         //then
         assertTrue(transactionService.validateTransaction(coinbase));
     }

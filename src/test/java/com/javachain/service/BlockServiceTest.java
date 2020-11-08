@@ -69,8 +69,12 @@ class BlockServiceTest {
         OutgoingTransaction outTransaction = new OutgoingTransaction(wallet.address(), BigDecimal.ONE);
         Transaction transaction = new Transaction();
         transaction.setOutgoingTransactions(Collections.singletonList(outTransaction));
-        //when
-        when(transactionService.send(wallet, true, wallet)).thenReturn(transaction);
+        //when - mineBlock builds its coinbase via send(wallet,true,0,out(null-address,25))
+        // (the mock wallet has no address); stub exactly that shape
+        when(transactionService.send(eq(wallet), eq(true), eq(BigDecimal.ZERO),
+                eq(new OutgoingTransaction(null, BigDecimal.valueOf(25)))))
+                .thenReturn(transaction);
+        when(transactionService.computeTotalFee(anyList())).thenReturn(BigDecimal.ZERO);
         when(miningService.mineNonce(anyString(), anyInt())).thenReturn("123");
         when(miningService.mineDigest(anyString(), anyInt())).thenReturn("123");
         when(wallet.getPrivateKey()).thenReturn(privateKey);

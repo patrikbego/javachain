@@ -69,8 +69,10 @@ public class ReviewFindingsIT {
     }
 
     /**
-     * Finding 2: validateCoinbaseTransaction enforces the minting rules - a hand-built
-     * "coinbase" paying itself 1,000,000 tokens is rejected and cannot be mined.
+     * Finding 2: the minting rules hold. A hand-built "coinbase" paying itself
+     * 1,000,000 tokens is structurally well-formed standalone (>= incentive, correctly
+     * signed) - but the exact payout (incentive plus sibling fees) is enforced when
+     * the containing block is verified, so unlimited minting cannot be mined.
      */
     @Test
     public void unlimitedMintingViaForgedCoinbaseIsRejected() throws Exception {
@@ -80,11 +82,11 @@ public class ReviewFindingsIT {
         attacker = walletService.syncBlockchain(attacker, genesis);
 
         // Exactly what mineBlock() does internally - except the reward amount:
-        attacker.setAmountToBeSent(new BigDecimal(1_000_000));
-        Transaction mint = transactionService.send(attacker, true, attacker);
+        Transaction mint = transactionService.send(attacker, true, BigDecimal.ZERO,
+                new OutgoingTransaction(attacker.getPublicKey(), new BigDecimal(1_000_000)));
 
-        assertFalse(transactionService.validateTransaction(mint),
-                "a coinbase paying more than the block incentive must be invalid");
+        assertTrue(transactionService.validateTransaction(mint),
+                "standalone, an overpaying coinbase passes structural checks");
 
         Block forged = new Block(attacker.address(), Collections.singletonList(mint), genesis);
         String hashingMessage = forged.getHashingMessage();
@@ -92,7 +94,7 @@ public class ReviewFindingsIT {
         forged.setHash(miningService.mineDigest(hashingMessage, 2));
 
         assertFalse(blockService.verifyBlock(forged),
-                "a block containing an invalid coinbase must not verify");
+                "block verification must reject a coinbase not paying incentive+fees");
     }
 
     /**
@@ -109,8 +111,8 @@ public class ReviewFindingsIT {
         Block genesis = blockService.mineBlock(patrik, Collections.emptyList(), null);
         patrik = walletService.syncBlockchain(patrik, genesis);
 
-        donna.setAmountToBeSent(new BigDecimal(5));
-        Transaction t2 = transactionService.send(patrik, false, donna);
+        Transaction t2 = transactionService.send(patrik, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donna.getPublicKey(), new BigDecimal(5)));
         Block b1 = blockService.mineBlock(patrik, Collections.singletonList(t2), genesis);
 
         // Mallory builds a transaction consuming Patrik->Donna's 5-coin output, paid to

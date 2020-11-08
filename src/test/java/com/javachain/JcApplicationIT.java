@@ -1,6 +1,7 @@
 package com.javachain;
 
 import com.javachain.dto.Block;
+import com.javachain.dto.OutgoingTransaction;
 import com.javachain.dto.Transaction;
 import com.javachain.dto.Wallet;
 import com.javachain.service.BlockService;
@@ -88,12 +89,10 @@ public class JcApplicationIT {
         assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
         assertEquals(new BigDecimal(0), blockService.computeBalance(johnsWallet));
 
-        LOGGER.info("5 tokens is being set to be sent to Johns and Donnas wallet (patriks wallet UI)");
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        johnsWallet.setAmountToBeSent(new BigDecimal(5));
-
-        LOGGER.info("Create first real transaction - send 5 tokens to Donna and 5 to John (patriks wallet UI)");
-        t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
+        LOGGER.info("5 tokens is being sent to Johns and Donnas wallet (patriks wallet UI)");
+        t2 = transactionService.send(patriksWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)),
+                new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(5)));
 
         Block b1 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), genesisBlock);
         assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
@@ -110,9 +109,9 @@ public class JcApplicationIT {
         LOGGER.info("Once the transaction is approved the wallets need to be synced again (syncing is ongoing/looping process)");
 
         LOGGER.info("------------ Repeat the process - John will send 5 tokens to Donna and Patrik -------------");
-        patriksWallet.setAmountToBeSent(new BigDecimal(5));
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        t3 = transactionService.send(johnsWallet, false, donnasWallet, patriksWallet);
+        t3 = transactionService.send(johnsWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)),
+                new OutgoingTransaction(patriksWallet.getPublicKey(), new BigDecimal(5)));
 
         Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t3), b1);
 
@@ -124,9 +123,10 @@ public class JcApplicationIT {
         assertEquals(new BigDecimal(10), blockService.computeBalance(donnasWallet));
         assertEquals(new BigDecimal(45), blockService.computeBalance(johnsWallet));
 
-        patriksWallet.setAmountToBeSent(new BigDecimal(1));
-        johnsWallet.setAmountToBeSent(new BigDecimal(8));
-        t4 = transactionService.send(donnasWallet, false, johnsWallet, patriksWallet);
+        // donna owns exactly 5 unspent - she splits them 4 to John and 1 to Patrik
+        t4 = transactionService.send(donnasWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(4)),
+                new OutgoingTransaction(patriksWallet.getPublicKey(), new BigDecimal(1)));
 
         Block b3 = blockService.mineBlock(donnasWallet, Collections.singletonList(t4), b2);
 
@@ -135,8 +135,8 @@ public class JcApplicationIT {
         donnasWallet = walletService.syncBlockchain(donnasWallet, b3);
 
         assertEquals(new BigDecimal(21), blockService.computeBalance(patriksWallet));
-        assertEquals(new BigDecimal(26), blockService.computeBalance(donnasWallet));
-        assertEquals(new BigDecimal(53), blockService.computeBalance(johnsWallet));
+        assertEquals(new BigDecimal(30), blockService.computeBalance(donnasWallet));
+        assertEquals(new BigDecimal(49), blockService.computeBalance(johnsWallet));
 
     }
 
@@ -218,9 +218,9 @@ public class JcApplicationIT {
         donnasWallet = walletService.syncBlockchain(donnasWallet, genesis);
 
         // patrik is the only funded wallet (25) - only he can spend
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        johnsWallet.setAmountToBeSent(new BigDecimal(5));
-        t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
+        t2 = transactionService.send(patriksWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)),
+                new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(5)));
 
         assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
         assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
@@ -228,23 +228,24 @@ public class JcApplicationIT {
 
         LOGGER.debug("b1: " + genesis.getHash() + " with fee=" + transactionService.computeTotalFee(genesis.getTransactionList()));
 
-        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), genesis); // john gets the 25 incentive + 5 from patrik
+        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), genesis); // john gets the 25 incentive + 0 fees
 
         patriksWallet = walletService.syncBlockchain(patriksWallet, b2);
         johnsWallet = walletService.syncBlockchain(johnsWallet, b2);
         donnasWallet = walletService.syncBlockchain(donnasWallet, b2);
-        assertEquals(new BigDecimal(15), blockService.computeBalance(patriksWallet)); // 25 - 10 sent
+        assertEquals(new BigDecimal(15), blockService.computeBalance(patriksWallet)); // 25 - 10 sent (+15 change back)
         assertEquals(new BigDecimal(5), blockService.computeBalance(donnasWallet));   // received 5
         assertEquals(new BigDecimal(30), blockService.computeBalance(johnsWallet));   // 25 mined + 5 received
 
-        // now john is funded and can send on
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        patriksWallet.setAmountToBeSent(new BigDecimal(5));
-        t3 = transactionService.send(johnsWallet, false, donnasWallet, patriksWallet);
+        // now john is funded and can send on; t3 stays unconfirmed for now
+        t3 = transactionService.send(johnsWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)),
+                new OutgoingTransaction(patriksWallet.getPublicKey(), new BigDecimal(5)));
 
-        patriksWallet.setAmountToBeSent(new BigDecimal(1));
-        johnsWallet.setAmountToBeSent(new BigDecimal(8));
-        t4 = transactionService.send(donnasWallet, false, johnsWallet, patriksWallet);
+        // donna owns exactly the 5 from t2 - she splits them 4 to John and 1 to Patrik
+        t4 = transactionService.send(donnasWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(4)),
+                new OutgoingTransaction(patriksWallet.getPublicKey(), new BigDecimal(1)));
 
         assertTrue(transactionService.validateTransaction(t2));
         assertTrue(transactionService.validateTransaction(t3));
@@ -257,15 +258,15 @@ public class JcApplicationIT {
         donnasWallet = walletService.syncBlockchain(donnasWallet, b3);
 
         BigDecimal patriksCoins = blockService.computeBalance(patriksWallet);
-        assertEquals(new BigDecimal(16), patriksCoins); // 25 mined + 1 (t4) - 10 sent via t2
+        assertEquals(new BigDecimal(16), patriksCoins); // 25 mined + 1 (t4) - 10 sent via t2 (+15 change cancels out)
         LOGGER.debug("Patrik  has {} javacoins\n", patriksCoins);
 
         BigDecimal donnasCoins = blockService.computeBalance(donnasWallet);
-        assertEquals(new BigDecimal(21), donnasCoins);  // 5 (t2) + 25 mined - 9 sent via t4; t3 not confirmed yet
+        assertEquals(new BigDecimal(25), donnasCoins);  // 5 (t2) + 25 mined - 5 sent via t4; t3 not confirmed yet
         LOGGER.debug("Donna  has {} javacoins\n", donnasCoins);
 
         BigDecimal johnsCoins = blockService.computeBalance(johnsWallet);
-        assertEquals(new BigDecimal(38), johnsCoins);   // 25 mined + 5 (t2) + 8 (t4); t3 not confirmed yet
+        assertEquals(new BigDecimal(34), johnsCoins);   // 25 mined + 5 (t2) + 4 (t4); t3 not confirmed yet
         LOGGER.debug("John  has {} javacoins\n", johnsCoins);
     }
 
@@ -282,9 +283,9 @@ public class JcApplicationIT {
         donnasWallet = walletService.syncBlockchain(donnasWallet, initialBlock);
 
 //        create first real transaction - send 5 coins to Donna and 5 to John
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        johnsWallet.setAmountToBeSent(new BigDecimal(5));
-        Transaction t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
+        Transaction t2 = transactionService.send(patriksWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)),
+                new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(5)));
 
         assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
         assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
@@ -321,7 +322,8 @@ public class JcApplicationIT {
         assertEquals(new BigDecimal(30), blockService.computeBalance(johnsWallet));
 //
 //        once the block was approved and synced john can send 5 to donna
-        Transaction t3 = transactionService.send(johnsWallet, false, donnasWallet);
+        Transaction t3 = transactionService.send(johnsWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(5)));
 
         donnasWallet = walletService.syncBlockchain(donnasWallet, newValidatedBlock); // -10 s
 
@@ -334,8 +336,8 @@ public class JcApplicationIT {
         try {
             //Sync the wallet (t2, t21 are validated) this transaction will fail
             donnasWallet = walletService.syncBlockchain(donnasWallet, newValidatedBlock);
-            johnsWallet.setAmountToBeSent(new BigDecimal(3));
-            t4 = transactionService.send(donnasWallet, false, johnsWallet);
+            t4 = transactionService.send(donnasWallet, false, BigDecimal.ZERO,
+                    new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(3)));
         } catch (Exception e) {
             LOGGER.debug("Expected fail : transaction 3 was not yet added to the chain (t3 was not approved)");
         }
@@ -363,7 +365,8 @@ public class JcApplicationIT {
             LOGGER.debug("Expected: equal-height fork rejected ({})", e.getMessage());
         }
         // donnas stays on her current chain and can still spend her confirmed output
-        t4 = transactionService.send(donnasWallet, false, johnsWallet);
+        t4 = transactionService.send(donnasWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(johnsWallet.getPublicKey(), new BigDecimal(3)));
 
         assertTrue(transactionService.validateTransaction(t4));
 
@@ -383,8 +386,8 @@ public class JcApplicationIT {
         johnsWallet = walletService.syncBlockchain(johnsWallet, b3);
         donnasWallet = walletService.syncBlockchain(donnasWallet, b3);
 
-        johnsWallet.setAmountToBeSent(BigDecimal.ONE);
-        Transaction tx = transactionService.send(johnsWallet, false, johnsWallet);
+        Transaction tx = transactionService.send(johnsWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(johnsWallet.getPublicKey(), BigDecimal.ONE));
 
         tx.setSignature(encryptionUtility.sign(tx.getCanonicalPayload(), johnsWallet.getPrivateKey()));
         assertTrue(encryptionUtility.verifySignature(tx.getCanonicalPayload(), tx.getSignature(), tx.getWallet().address()));

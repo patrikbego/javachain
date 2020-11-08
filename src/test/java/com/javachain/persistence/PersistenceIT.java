@@ -125,8 +125,8 @@ public class PersistenceIT {
         john = walletService.syncBlockchain(john, genesis);
         donna = walletService.syncBlockchain(donna, genesis);
 
-        donna.setAmountToBeSent(new BigDecimal(7));
-        Transaction t2 = transactionService.send(patrik, false, donna);
+        Transaction t2 = transactionService.send(patrik, false, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(donna.getPublicKey(), new BigDecimal(7)));
         Block b1 = blockService.mineBlock(john, Collections.singletonList(t2), genesis);
 
         patrik = walletService.syncBlockchain(patrik, b1);

@@ -33,18 +33,42 @@ public class WeaknessesIT extends JcApplicationIT {
         // state inherited from given():
         // patrik/donna/john are funded and synced to the shared b3 chain
 
-        // 1) minting rules: a coinbase paying more than the block incentive is invalid,
-        //    no matter who signs it
-        donnasWallet.setAmountToBeSent(new BigDecimal(999));
-        Transaction fakeMint = transactionService.send(donnasWallet, true, donnasWallet);
-        assertFalse(transactionService.validateTransaction(fakeMint),
-                "coinbase above the block incentive must be rejected");
+        // 1) minting rules: a coinbase paying 999 instead of incentive+fees is
+        //    structurally well-formed (>= incentive, correctly signed) - but the
+        //    EXACT payout is enforced when the block is verified against the fees of
+        //    its sibling transactions. Standalone checks cannot know that total,
+        //    so this is proven at block level.
+        Transaction fakeMint = transactionService.send(donnasWallet, true, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(999)));
+        assertTrue(transactionService.validateTransaction(fakeMint),
+                "standalone, an overpaying coinbase looks structurally fine");
 
-        // 2) double spend: donna re-spends the output t4 already consumed.
-        //    Signature and ownership are perfectly valid here - the theft is only
-        //    visible at CHAIN level, which is exactly what verifyBlock() must catch.
-        donnasWallet.setAmountToBeSent(new BigDecimal(1));
-        Transaction doubleSpend = transactionService.send(donnasWallet, false, patriksWallet);
+        Block fakeTip = donnasWallet.getBlockchain();
+        Block forgedBlock = new Block(donnasWallet.address(),
+                Collections.singletonList(fakeMint), fakeTip);
+        String hashingMessage = forgedBlock.getHashingMessage();
+        forgedBlock.setNonce(miningService.mineNonce(hashingMessage, 2));
+        forgedBlock.setHash(miningService.mineDigest(hashingMessage, 2));
+        assertFalse(blockService.verifyBlock(forgedBlock),
+                "a coinbase not paying exactly incentive+fees must be rejected by block verification");
+
+        // ...and so is a coinbase UNDERPAYING the miner (would silently burn money)
+        Transaction underpayingMint = transactionService.send(donnasWallet, true, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(donnasWallet.getPublicKey(), new BigDecimal(10)));
+        assertFalse(transactionService.validateTransaction(underpayingMint),
+                "coinbase below the block incentive must be rejected standalone");
+
+        // 2) double spend: donna re-spends the output t3 already consumed.
+        //    Hand-built so its shape is exactly what an attacker would forge (a real
+        //    send() would attach donna's actual change output). Signature and
+        //    ownership are perfectly valid here - the theft is only visible at CHAIN
+        //    level, which is exactly what verifyBlock() must catch.
+        Transaction doubleSpend = new Transaction();
+        doubleSpend.setWallet(donnasWallet);
+        doubleSpend.setInitial(false);
+        doubleSpend.setFee(BigDecimal.ZERO);
+        doubleSpend.setOutgoingTransactions(Collections.singletonList(
+                new com.javachain.dto.OutgoingTransaction(patriksWallet.getPublicKey(), BigDecimal.ONE)));
         doubleSpend.setIncomingTransactions(Collections.singletonList(new IncomingTransaction(t3, 0)));
         doubleSpend.setSignature(new EncryptionUtility()
                 .sign(doubleSpend.getCanonicalPayload(), donnasWallet.getPrivateKey()));

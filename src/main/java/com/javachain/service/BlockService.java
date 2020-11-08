@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.security.SignatureException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -51,6 +52,9 @@ public class BlockService {
      * Validates the transactions and assigning it to a block.
      * Each block needs a nonce and a hash solution before
      * it is successfully approved.
+     * <p>
+     * The coinbase pays the block incentive PLUS the fees of every included
+     * transaction - validation derives each fee, so the miner's reward is exact.
      *
      * @param wallet Wallet
      * @param transactions List<Transactions>
@@ -66,6 +70,9 @@ public class BlockService {
                     throw new SecurityException("Invalid transaction present");
             }
         }
+        // validation derived each spend-fee; the miner collects all of them
+        BigDecimal collectedFees = transactionService.computeTotalFee(
+                transactions == null ? Collections.emptyList() : transactions);
 
         Block block = new Block(wallet.address(), null, previousBlock);
 
@@ -80,8 +87,9 @@ public class BlockService {
 
 //        Wallet systemWallet = SystemWallet.getInstance();
 
-        wallet.setAmountToBeSent(Consensus.BLOCK_INCENTIVE);
-        Transaction miningTransaction = transactionService.send(wallet, true, wallet);
+        Transaction miningTransaction = transactionService.send(wallet, true, BigDecimal.ZERO,
+                new OutgoingTransaction(wallet.address(),
+                        Consensus.BLOCK_INCENTIVE.add(collectedFees)));
 
         List<Transaction> trs = new ArrayList<>();
 
@@ -186,13 +194,14 @@ public class BlockService {
                 return false;
             }
 
+            if (verifyGenesisTransaction(block)) {
+                return false;
+            }
+
             if (verifyListOfTransactions(usedOutputReferences, block)) {
                 return false;
             }
 
-            if (verifyGenesisTransaction(block)) {
-                return false;
-            }
             block = block.getPreviousBlock();
         }
 
@@ -216,12 +225,18 @@ public class BlockService {
 
     /**
      * Validates all transactions of one block and records spent outputs as
-     * {@code parentTxId:outputIndex} references. Returning true signals FAILURE (an
-     * invalid or double-spending transaction was found).
+     * {@code parentTxId:outputIndex} references, then enforces the exact coinbase
+     * payout: incentive plus the fees of the block's other transactions. A miner
+     * paying itself more (or less) than that is rejected here even though the
+     * coinbase alone looks structurally fine.
+     * <p>
+     * Returning true signals FAILURE (an invalid or double-spending transaction was
+     * found, or the minting payout does not match).
      */
     private boolean verifyListOfTransactions(Set<String> usedOutputReferences, Block block)
             throws SignatureException {
-        for (Transaction tr : block.getTransactionList()) {
+        List<Transaction> transactionList = block.getTransactionList();
+        for (Transaction tr : transactionList) {
             if (!transactionService.validateTransaction(tr))
                 return true;
             List<IncomingTransaction> ins = tr.getIncomingTransactions();
@@ -234,6 +249,25 @@ public class BlockService {
                     return true;
                 }
             }
+        }
+
+        // Exact minting check - only possible once every sibling fee has been derived
+        // by validation above. This closes the "pay yourself 1,000,000" hole at the
+        // level where fee collection is actually known.
+        Transaction coinbase = transactionList.get(0);
+        BigDecimal collectedFees = BigDecimal.ZERO;
+        for (int i = 1; i < transactionList.size(); i++) {
+            Transaction tr = transactionList.get(i);
+            if (!tr.isInitial() && tr.getFee() != null) {
+                collectedFees = collectedFees.add(tr.getFee());
+            }
+        }
+        BigDecimal expectedPayout = Consensus.BLOCK_INCENTIVE.add(collectedFees);
+        OutgoingTransaction reward = coinbase.getOutgoingTransactions().get(0);
+        if (expectedPayout.compareTo(reward.getAmount()) != 0) {
+            LOGGER.info("Coinbase pays {} but incentive plus fees is {}",
+                    reward.getAmount(), expectedPayout);
+            return true;
         }
         return false;
     }

@@ -298,6 +298,31 @@ peers agree on history (the shorter chain is an exact prefix of the longer one),
 exactly one leg of the double spend survived anywhere (the other was orphaned with its
 fork), and the spender's coins were consumed exactly once network-wide.
 
+## FEES AND AN HONEST SEND API
+
+`TransactionService.send()` used to take the transfer amount from the RECEIVING
+wallet's `amountToBeSent` field - and nothing checked that outputs stayed below
+inputs, so a hand-built transaction could mint money by overspending. Both are fixed:
+
+- `send(sender, isInitial, fee, OutgoingTransaction...)` - recipients and amounts are
+  explicit; the sender's unspent outputs fund the transfer, and any surplus returns to
+  the sender as a trailing change output. Value is conserved exactly:
+  inputs = outputs + fee. Insufficient funds throw instead of silently destroying or
+  creating coins.
+- Validation DERIVES the fee (inputs minus outputs) on every check - it is
+  deliberately not part of the canonical payload, so there is nothing mutable to
+  sneak past a signature (the old `computeTotalFee` mutated fees after signing,
+  which is why fees had to stay out of the payload).
+- A spend transaction whose outputs exceed its owned inputs is rejected even when
+  correctly signed - closing the value-creation hole.
+- The coinbase pays exactly `BLOCK_INCENTIVE` plus the fees of its sibling
+  transactions. Standalone checks can only reject underpayment (which would burn
+  money); the exact payout is enforced by `verifyBlock()` once the sibling fees are
+  known. A miner paying itself one extra coin fails verification.
+
+`FeesIT` pins each rule: fee collection by the miner, insufficient-funds rejection,
+overspend rejection, and the greedy-coinbase rejection.
+
 **WALLET**  
 A cryptocurrency wallet is the main "store" of blocks and credentials linked to users. 
 The keys linked in the wallet are used to encrypt/decrypt and track ownership of transactions.

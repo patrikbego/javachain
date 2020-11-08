@@ -18,11 +18,10 @@ public class BlockServiceIT extends JcApplicationIT {
 
     @Test
     public void mineBlock() throws Exception {
-        //given
+        //given - after given() patrik's only unspent output is the 1-coin change of t4
         testWallet = walletService.generateNewWallet("testWallet");
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        johnsWallet.setAmountToBeSent(new BigDecimal(5));
-        t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
+        t2 = transactionService.send(patriksWallet, false, BigDecimal.ZERO,
+                new OutgoingTransaction(johnsWallet.getPublicKey(), BigDecimal.ONE));
         //when new block
         block = blockService.mineBlock(testWallet, new ArrayList<>(), null);
         OutgoingTransaction outTransaction = block.getTransactionList().get(0).getOutgoingTransactions().get(0);

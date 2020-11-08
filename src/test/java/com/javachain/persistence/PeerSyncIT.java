@@ -75,20 +75,19 @@ public class PeerSyncIT {
         john = walletService.syncBlockchain(john, genesis);
         donna = walletService.syncBlockchain(donna, genesis);
 
-        donna.setAmountToBeSent(new BigDecimal(10));
-        Transaction funding = transactionService.send(patrik, false, donna);
+        Transaction funding = transactionService.send(patrik, false, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(donna.getPublicKey(), new BigDecimal(10)));
         Block funded = blockService.mineBlock(john, Collections.singletonList(funding), genesis);
         patrik = walletService.syncBlockchain(patrik, funded);
         john = walletService.syncBlockchain(john, funded);
         donna = walletService.syncBlockchain(donna, funded);
 
-        // two spends of the SAME output - one per peer's mempool.
-        // (Quirk of the original API: send() takes the amount from the RECEIVING
-        // wallet's amountToBeSent, so the recipient sets how much they collect.)
-        patrik.setAmountToBeSent(new BigDecimal(10));
-        Transaction spendToPatrik = transactionService.send(donna, false, patrik);
-        john.setAmountToBeSent(new BigDecimal(10));
-        Transaction spendToJohn = transactionService.send(donna, false, john);
+        // two spends of the SAME output - one per peer's mempool. donna owns exactly
+        // the 10-coin funding output, so each leg pays out exactly 10 with no change.
+        Transaction spendToPatrik = transactionService.send(donna, false, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(patrik.getPublicKey(), new BigDecimal(10)));
+        Transaction spendToJohn = transactionService.send(donna, false, BigDecimal.ZERO,
+                new com.javachain.dto.OutgoingTransaction(john.getPublicKey(), new BigDecimal(10)));
         assertNotEquals(spendToPatrik.getSignature(), spendToJohn.getSignature());
 
         File netDir = networkFolder.getRoot();
