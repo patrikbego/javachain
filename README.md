@@ -211,6 +211,23 @@ E.g. (b = block; prk = PRIVATE KEY; puk = PUBLIC KEY; s = SIGNATURE)
 
 ## BUILDING BLOCKS OF BLOCKCHAIN
 
+**CANONICAL SERIALIZATION**  
+Everything that gets hashed or signed is now produced by `CanonicalSerializer` instead of
+`Object::toString()`. The canonical form is deterministic and JVM-independent: keys are the
+hex of their X.509 encoding, amounts are normalized decimals, transaction inputs reference
+the parent transaction by its id (no nested object graphs), and blocks commit to their
+ancestor's hash, their timestamp, miner address and the list of transaction ids.
+
+This fixes a fundamental flaw of the first version: hashing/signing used to include JVM
+identity hash codes (via `Wallet`, which had no `toString()`), so hashes and signatures
+could not be reproduced after a restart or on another machine - making persistence and
+network verification impossible by design. Blocks now also carry an explicit
+`previousHash` value (the real chain link) and a committed timestamp; both were missing
+from the mined message before.
+
+The fee is deliberately excluded from the signed payload until fees are actually
+implemented (`computeTotalFee` currently mutates the field as a side effect).
+
 **WALLET**  
 A cryptocurrency wallet is the main "store" of blocks and credentials linked to users. 
 The keys linked in the wallet are used to encrypt/decrypt and track ownership of transactions.

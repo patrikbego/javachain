@@ -1,5 +1,7 @@
 package com.javachain.dto;
 
+import com.javachain.util.CanonicalSerializer;
+
 import java.io.Serializable;
 import java.security.PublicKey;
 import java.time.Instant;
@@ -35,6 +37,12 @@ import java.util.Objects;
  */
 public class Block implements Serializable {
 
+    /**
+     * Hash of the ancestor block - the actual cryptographic chain link. Stored as a value
+     * (not derived on the fly) so that the canonical payload commits to it and the chain
+     * stays verifiable without walking object references.
+     */
+    private String previousHash;
     private String nonce;
     private String hash;
     private List<Transaction> transactionList;
@@ -48,19 +56,49 @@ public class Block implements Serializable {
         this.minersAddress = minersAddress;
         this.transactionList = transactions;
         this.previousBlock = previousBlock;
+        this.previousHash = previousBlock == null
+                ? CanonicalSerializer.GENESIS_PREVIOUS_HASH
+                : (previousBlock.getHash() != null ? previousBlock.getHash() : CanonicalSerializer.GENESIS_PREVIOUS_HASH);
         this.dateCreated = Instant.now();
         includeHash = false;
     }
 
+    /**
+     * Canonical, deterministic representation of everything this block commits to
+     * (ancestor hash, timestamp, miner address, transaction ids). This - not
+     * {@link #toString()} - is what gets hashed and later re-verified.
+     */
+    public String getCanonicalPayload() {
+        return CanonicalSerializer.blockPayload(this);
+    }
+
+    /**
+     * Exact message proof-of-work iterates over; the nonce is appended by the miner,
+     * i.e. {@code sha256(getHashingMessage() + nonce)} must equal {@code getHash()}.
+     */
+    public String getHashingMessage() {
+        return CanonicalSerializer.hashingMessage(this);
+    }
+
+    public String getPreviousHash() {
+        return previousHash;
+    }
+
+    public void setPreviousHash(String previousHash) {
+        this.previousHash = previousHash;
+    }
+
     @Override
     public String toString() {
+        // Human-readable summary only. Deliberately non-recursive and free of identity
+        // hash codes: canonical/hashed content lives in getCanonicalPayload().
         return "Block{" +
-                (includeHash ? "nonce='" + nonce + '\'' +
-                        ", hash='" + hash + '\'' : "") +
-                ", transactionList=" + transactionList +
-                ", ancestor=" + previousBlock +
-                ", minerAddress=" + minersAddress +
-                ", skipVerification=" + skipVerification +
+                "prevHash='" + previousHash + '\'' +
+                ", nonce='" + nonce + '\'' +
+                ", hash='" + hash + '\'' +
+                ", transactions=" + (transactionList == null ? 0 : transactionList.size()) +
+                ", miner=" + CanonicalSerializer.address(minersAddress) +
+                ", ts=" + (dateCreated == null ? 0 : dateCreated.toEpochMilli()) +
                 '}';
     }
 
@@ -122,6 +160,10 @@ public class Block implements Serializable {
 
     public void setMinersAddress(PublicKey minersAddress) {
         this.minersAddress = minersAddress;
+    }
+
+    public Instant getDateCreated() {
+        return dateCreated;
     }
 
     public boolean isSkipVerification() {

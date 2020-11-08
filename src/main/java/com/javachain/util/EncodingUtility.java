@@ -24,6 +24,15 @@ public class EncodingUtility {
     private static final Logger LOGGER = LoggerFactory.getLogger(EncodingUtility.class);
 
     public String bytesToHex(byte[] bytes) {
+        return bytesToHexStatic(bytes);
+    }
+
+    /**
+     * Static variant used by {@link CanonicalSerializer} so DTOs can build canonical,
+     * dependency-free representations of themselves.
+     */
+    public static String bytesToHexStatic(byte[] bytes) {
+        if (bytes == null) return "null";
         StringBuilder hexString = new StringBuilder();
         for (byte byt : bytes) {
             hexString.append(Integer.toString((byt & 0xff) + 0x100, 16).substring(1));

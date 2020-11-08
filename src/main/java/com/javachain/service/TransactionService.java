@@ -53,7 +53,7 @@ public class TransactionService {
 
         List<IncomingTransaction> inTransactions = getPreviousInTransactions(senderWallet);
         transaction.setIncomingTransactions(inTransactions);
-        transaction.setSignature(encryptionUtility.sign(transaction.toString(), senderWallet.getPrivateKey()));
+        transaction.setSignature(encryptionUtility.sign(transaction.getCanonicalPayload(), senderWallet.getPrivateKey()));
 
         return transaction;
     }
@@ -84,7 +84,7 @@ public class TransactionService {
 
     public boolean validateTransaction(Transaction transaction) throws SignatureException {
 
-        String transactionMessage = transaction.toString();
+        String transactionMessage = transaction.getCanonicalPayload();
         if (transaction.isInitial() || transaction.getIncomingTransactions() == null || transaction.getIncomingTransactions().isEmpty())
             return true;
 

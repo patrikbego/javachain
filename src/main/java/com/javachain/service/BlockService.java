@@ -91,7 +91,7 @@ public class BlockService {
 
         List<Transaction> trs = new ArrayList<>();
 
-        miningTransaction.setSignature(encryptionUtility.sign(miningTransaction.toString(), wallet.getPrivateKey()));
+        miningTransaction.setSignature(encryptionUtility.sign(miningTransaction.getCanonicalPayload(), wallet.getPrivateKey()));
 
         trs.add(miningTransaction);
         if (transactions != null) {
@@ -99,9 +99,9 @@ public class BlockService {
         }
 
         block.setTransactionList(trs);
-        String clazz = block.toString();
-        block.setNonce(miningService.mineNonce(clazz, DIFFICULTY));
-        block.setHash(miningService.mineDigest(clazz, DIFFICULTY));
+        String hashingMessage = block.getHashingMessage();
+        block.setNonce(miningService.mineNonce(hashingMessage, DIFFICULTY));
+        block.setHash(miningService.mineDigest(hashingMessage, DIFFICULTY));
 
         return block;
     }

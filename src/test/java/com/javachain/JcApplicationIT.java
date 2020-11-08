@@ -328,8 +328,8 @@ public class JcApplicationIT {
         }
 
         //TODO add to initial transaction created and check if we really need the wallet in transaction
-        t4.setSignature(encryptionUtility.sign(t4.toString(), donnasWallet.getPrivateKey()));
-        assertTrue(encryptionUtility.verifySignature(t4.toString(), t4.getSignature(), t4.getWallet().address()));
+        t4.setSignature(encryptionUtility.sign(t4.getCanonicalPayload(), donnasWallet.getPrivateKey()));
+        assertTrue(encryptionUtility.verifySignature(t4.getCanonicalPayload(), t4.getSignature(), t4.getWallet().address()));
 
 //        t3 transaction needs to be approved
 //        blockchain needs to be validated first (in that case john is the miner and we don't take into account that more than x should approve the transaction)
@@ -359,8 +359,8 @@ public class JcApplicationIT {
         johnsWallet.setAmountToBeSent(BigDecimal.ONE);
         Transaction tx = transactionService.send(johnsWallet, false, johnsWallet);
 
-        tx.setSignature(encryptionUtility.sign(tx.toString(), johnsWallet.getPrivateKey()));
-        assertTrue(encryptionUtility.verifySignature(tx.toString(), tx.getSignature(), tx.getWallet().address()));
+        tx.setSignature(encryptionUtility.sign(tx.getCanonicalPayload(), johnsWallet.getPrivateKey()));
+        assertTrue(encryptionUtility.verifySignature(tx.getCanonicalPayload(), tx.getSignature(), tx.getWallet().address()));
 
         Block block = blockService.mineBlock(johnsWallet, Collections.singletonList(tx), b3);
 

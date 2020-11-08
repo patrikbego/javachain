@@ -121,4 +121,13 @@ public class Wallet implements Serializable {
     public void setAmountToBeSent(BigDecimal amountToBeSent) {
         this.amountToBeSent = amountToBeSent;
     }
+
+    @Override
+    public String toString() {
+        // Identity-hash-free summary for logs. Note: nothing cryptographic depends on
+        // toString() anymore - signing/hashing use CanonicalSerializer.
+        return "Wallet{signer='" + signer + '\'' +
+                ", address=" + com.javachain.util.CanonicalSerializer.address(publicKey) +
+                '}';
+    }
 }

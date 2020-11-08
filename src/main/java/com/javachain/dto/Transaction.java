@@ -1,5 +1,7 @@
 package com.javachain.dto;
 
+import com.javachain.util.CanonicalSerializer;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -79,16 +81,34 @@ public class Transaction implements Serializable {
         this.includeSignature = includeSignature;
     }
 
+    /**
+     * Canonical, deterministic representation of everything this transaction commits to
+     * (inputs as parent-tx references, outputs, fee, timestamp). This - not
+     * {@link #toString()} - is what gets signed and later verified. Note that the sender's
+     * {@code Wallet} object is deliberately excluded: ownership is proven by the signature
+     * against the referenced output, and including a live object would leak JVM identity
+     * hash codes into signatures.
+     */
+    public String getCanonicalPayload() {
+        return CanonicalSerializer.transactionPayload(this);
+    }
+
+    /**
+     * Stable cross-JVM id committing to payload and signature.
+     */
+    public String getId() {
+        return CanonicalSerializer.transactionId(this);
+    }
 
     @Override
     public String toString() {
+        // Human-readable summary only; identity-hash-free and STABLE across signature
+        // changes (no id, no signature content). Signed content is getCanonicalPayload().
         return "Transaction{" +
-                "inTransactions=" + incomingTransactions +
-                ", outTransactions=" + outgoingTransactions +
-//                ", fee=" + fee +
-                (includeSignature ? ", signature='" + signature + '\'' : "") +
-                ", wallet=" + wallet +
-                ", initial=" + initial +
+                "initial=" + initial +
+                ", inTransactions=" + (incomingTransactions == null ? 0 : incomingTransactions.size()) +
+                ", outTransactions=" + (outgoingTransactions == null ? 0 : outgoingTransactions.size()) +
+                ", wallet=" + (wallet == null ? "null" : CanonicalSerializer.address(wallet.address())) +
                 '}';
     }
 
@@ -112,6 +132,10 @@ public class Transaction implements Serializable {
 
     public boolean isInitial() {
         return initial;
+    }
+
+    public Instant getDateCreated() {
+        return dateCreated;
     }
 
     public void setInitial(boolean initial) {

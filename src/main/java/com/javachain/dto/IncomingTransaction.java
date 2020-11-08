@@ -26,6 +26,10 @@ public class IncomingTransaction implements Serializable {
         this.transaction = transaction;
     }
 
+    public int getOutPutIndex() {
+        return outPutIndex;
+    }
+
     public OutgoingTransaction getRecipient() {
         if (!transaction.getOutgoingTransactions().isEmpty()) {
             for (OutgoingTransaction otr : getTransaction().getOutgoingTransactions()) {
@@ -40,10 +44,18 @@ public class IncomingTransaction implements Serializable {
         return this.transaction.getOutgoingTransactions().get(this.outPutIndex);
     }
 
+    /**
+     * Id of the parent transaction whose output this input spends - the canonical way
+     * inputs are referenced in serialized form.
+     */
+    public String getParentTransactionId() {
+        return com.javachain.util.CanonicalSerializer.transactionId(this.transaction);
+    }
+
     @Override
     public String toString() {
         return "InTransaction{" +
-                "transaction=" + transaction +
+                "parentTxId=" + getParentTransactionId() +
                 ", outPutIndex=" + outPutIndex +
                 '}';
     }
