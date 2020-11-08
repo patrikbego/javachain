@@ -74,11 +74,27 @@ class TransactionServiceTest {
     }
 
     @Test
-    void validateTransaction() throws Exception {
+    void validateCoinbaseWithoutOutputsIsInvalid() throws Exception {
         //when
         when(transaction.isInitial()).thenReturn(true);
+        //then - coinbases follow minting rules now, an empty one is NOT auto-valid
+        assertFalse(transactionService.validateTransaction(transaction));
+    }
+
+    @Test
+    void validateValidCoinbase() throws Exception {
+        //given - a properly mined coinbase: self-payment of the block incentive, signed
+        EncryptionUtility eu = new EncryptionUtility();
+        java.security.KeyPair keyPair = eu.generateKeyPair();
+        Wallet miner = new Wallet(keyPair.getPrivate(), keyPair.getPublic(), "miner", null);
+        miner.setAmountToBeSent(com.javachain.service.Consensus.BLOCK_INCENTIVE);
+        when(encryptionUtility.sign(anyString(), eq(keyPair.getPrivate())))
+                .thenAnswer(inv -> eu.sign(inv.getArgument(0), keyPair.getPrivate()));
+        when(encryptionUtility.verifySignature(anyString(), anyString(), eq(keyPair.getPublic())))
+                .thenAnswer(inv -> eu.verifySignature(inv.getArgument(0), inv.getArgument(1), keyPair.getPublic()));
+        Transaction coinbase = transactionService.send(miner, true, miner);
         //then
-        assertTrue(transactionService.validateTransaction(transaction));
+        assertTrue(transactionService.validateTransaction(coinbase));
     }
 
     @Test
@@ -86,8 +102,7 @@ class TransactionServiceTest {
         //given
         //when
         when(transaction.getIncomingTransactions()).thenReturn(Collections.singletonList(inTransaction));
-        when(inTransaction.getRecipient()).thenReturn(outTransaction);
-        //then
+        //then - unresolvable input reference => invalid, no silent skip anymore
         assertFalse(transactionService.validateTransaction(transaction));
     }
 

@@ -211,22 +211,35 @@ public class JcApplicationIT {
 
         initializeWallets();
 
-        Block b1 = blockService.mineBlock(patriksWallet, new ArrayList<>(), null);//TODO replace this with hash code //this is new block, patrik should get 25
+        Block genesis = blockService.mineBlock(patriksWallet, new ArrayList<>(), null);
         LOGGER.debug("Genesis block mined");
+        patriksWallet = walletService.syncBlockchain(patriksWallet, genesis);
+        johnsWallet = walletService.syncBlockchain(johnsWallet, genesis);
+        donnasWallet = walletService.syncBlockchain(donnasWallet, genesis);
 
+        // patrik is the only funded wallet (25) - only he can spend
         donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        t2 = transactionService.send(johnsWallet, false, donnasWallet);
+        johnsWallet.setAmountToBeSent(new BigDecimal(5));
+        t2 = transactionService.send(patriksWallet, false, donnasWallet, johnsWallet);
 
-        assertEquals(blockService.computeBalance(patriksWallet), new BigDecimal(0));
-        assertEquals(blockService.computeBalance(donnasWallet), new BigDecimal(0));
-        assertEquals(blockService.computeBalance(johnsWallet), new BigDecimal(0));
+        assertEquals(new BigDecimal(25), blockService.computeBalance(patriksWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(donnasWallet));
+        assertEquals(new BigDecimal(0), blockService.computeBalance(johnsWallet));
 
-        LOGGER.debug("b1        : " + b1.getHash() + " with fee=" + transactionService.computeTotalFee(b1.getTransactionList()));
+        LOGGER.debug("b1: " + genesis.getHash() + " with fee=" + transactionService.computeTotalFee(genesis.getTransactionList()));
 
-        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), b1); // this is new block john should get 25 tokens
+        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), genesis); // john gets the 25 incentive + 5 from patrik
 
+        patriksWallet = walletService.syncBlockchain(patriksWallet, b2);
+        johnsWallet = walletService.syncBlockchain(johnsWallet, b2);
+        donnasWallet = walletService.syncBlockchain(donnasWallet, b2);
+        assertEquals(new BigDecimal(15), blockService.computeBalance(patriksWallet)); // 25 - 10 sent
+        assertEquals(new BigDecimal(5), blockService.computeBalance(donnasWallet));   // received 5
+        assertEquals(new BigDecimal(30), blockService.computeBalance(johnsWallet));   // 25 mined + 5 received
+
+        // now john is funded and can send on
+        donnasWallet.setAmountToBeSent(new BigDecimal(5));
         patriksWallet.setAmountToBeSent(new BigDecimal(5));
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
         t3 = transactionService.send(johnsWallet, false, donnasWallet, patriksWallet);
 
         patriksWallet.setAmountToBeSent(new BigDecimal(1));
@@ -237,22 +250,22 @@ public class JcApplicationIT {
         assertTrue(transactionService.validateTransaction(t3));
         assertTrue(transactionService.validateTransaction(t4));
 
-        Block b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 tokens
+        Block b3 = blockService.mineBlock(donnasWallet, Collections.singletonList(t4), b2); // donna mines, t3 stays in the mempool for now
 
         patriksWallet = walletService.syncBlockchain(patriksWallet, b3);
         johnsWallet = walletService.syncBlockchain(johnsWallet, b3);
         donnasWallet = walletService.syncBlockchain(donnasWallet, b3);
 
         BigDecimal patriksCoins = blockService.computeBalance(patriksWallet);
-        assertEquals(patriksCoins, new BigDecimal(31)); //25 + 1 + 5 ?30
+        assertEquals(new BigDecimal(16), patriksCoins); // 25 mined + 1 (t4) - 10 sent via t2
         LOGGER.debug("Patrik  has {} javacoins\n", patriksCoins);
 
         BigDecimal donnasCoins = blockService.computeBalance(donnasWallet);
-        assertEquals(donnasCoins, new BigDecimal(1)); // 5 + 5 - 9 ?7
+        assertEquals(new BigDecimal(21), donnasCoins);  // 5 (t2) + 25 mined - 9 sent via t4; t3 not confirmed yet
         LOGGER.debug("Donna  has {} javacoins\n", donnasCoins);
 
         BigDecimal johnsCoins = blockService.computeBalance(johnsWallet);
-        assertEquals(johnsCoins, new BigDecimal(43)); // 50 - 15 + 8 = 43 ?38
+        assertEquals(new BigDecimal(38), johnsCoins);   // 25 mined + 5 (t2) + 8 (t4); t3 not confirmed yet
         LOGGER.debug("John  has {} javacoins\n", johnsCoins);
     }
 
@@ -341,20 +354,34 @@ public class JcApplicationIT {
             LOGGER.debug("Expected fail : initialBlock and transactions are already used");
         }
 
-//        b2 = newblockService.mineBlock(patriksWallet, Arrays.asList(t2, t3), initialBlock);
-        //sync the new block (with approved t3 tran)
-        donnasWallet = walletService.syncBlockchain(donnasWallet, b2);
+        // consensus: b2 is an equal-height fork of what the wallets already have -
+        // it must be REJECTED instead of silently replacing their chains
+        try {
+            donnasWallet = walletService.syncBlockchain(donnasWallet, b2);
+            fail("an equal-height fork must not replace the current chain");
+        } catch (SecurityException e) {
+            LOGGER.debug("Expected: equal-height fork rejected ({})", e.getMessage());
+        }
+        // donnas stays on her current chain and can still spend her confirmed output
         t4 = transactionService.send(donnasWallet, false, johnsWallet);
 
-//        donnasWallet.setBlockchain(b2);
-//        assertTrue(transactionService.validateTransaction(t4));
+        assertTrue(transactionService.validateTransaction(t4));
+
         Block b3 = null;
         try {
-            b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 coins
+            // b2 already contains t3 - mining it again would be a double inclusion,
+            // so b3 confirms only t4 on top of b2
+            b3 = blockService.mineBlock(johnsWallet, Collections.singletonList(t4), b2); // this is new block john should get 25 coins
             LOGGER.debug(("b3        : " + b3.getHash() + " with fee=" + transactionService.computeTotalFee(b3.getTransactionList())));
         } catch (Exception e) {
-            LOGGER.debug("Expected fail : initialBlock and transactions are already used");
+            LOGGER.debug("Unexpected fail : " + e.getMessage());
         }
+
+        // the strictly longer chain is adopted by everyone
+        assertNotNull(b3);
+        patriksWallet = walletService.syncBlockchain(patriksWallet, b3);
+        johnsWallet = walletService.syncBlockchain(johnsWallet, b3);
+        donnasWallet = walletService.syncBlockchain(donnasWallet, b3);
 
         johnsWallet.setAmountToBeSent(BigDecimal.ONE);
         Transaction tx = transactionService.send(johnsWallet, false, johnsWallet);
@@ -364,11 +391,16 @@ public class JcApplicationIT {
 
         Block block = blockService.mineBlock(johnsWallet, Collections.singletonList(tx), b3);
 
-        assertFalse(blockService.verifyBlock(block));
+        // john spends his own unspent coinbase output - this block is genuinely valid
+        assertTrue(blockService.verifyBlock(block));
 
-        assertEquals(new BigDecimal(15), blockService.computeBalance(patriksWallet));
-        assertEquals(new BigDecimal(10), blockService.computeBalance(donnasWallet));
-        assertEquals(new BigDecimal(30), blockService.computeBalance(johnsWallet));
+        // balances on the common b3 chain (income - outcome):
+        // patrik: 25 (cb genesis) + 25 (mined b2) - 10 (t2 sent)             = 40
+        // donna:   5 (t2)    +  5 (t3)            -  3 (t4 sent)             =  7
+        // john:   25 (mined b3) + 5 (t2) + 3 (t4) -  5 (t3 sent)             = 28
+        assertEquals(new BigDecimal(40), blockService.computeBalance(patriksWallet));
+        assertEquals(new BigDecimal(7), blockService.computeBalance(donnasWallet));
+        assertEquals(new BigDecimal(28), blockService.computeBalance(johnsWallet));
 
     }
 

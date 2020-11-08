@@ -228,6 +228,32 @@ from the mined message before.
 The fee is deliberately excluded from the signed payload until fees are actually
 implemented (`computeTotalFee` currently mutates the field as a side effect).
 
+## VERIFICATION AND CONSENSUS
+
+`BlockService.verifyBlock()` walks a chain from its tip to genesis and enforces, per
+block:
+
+1. **Real proof-of-work**: the stored hash must equal `sha256(canonical payload +
+   "|nonce=" + nonce)`. Earlier versions only checked the leading-digits prefix, so any
+   fabricated hash string passed as valid work.
+2. **Minting rules (coinbase)**: exactly one coinbase, at index 0, with no inputs,
+   paying exactly the `Consensus.BLOCK_INCENTIVE` to the miner, signed by the miner.
+   The old blanket "initial transaction -> valid" bypass allowed unlimited minting.
+3. **Ownership**: a spending transaction must reference resolvable outputs that all
+   belong to one wallet, and its signature must verify against exactly that owner's key.
+   No silent skips remain: an unresolvable input invalidates the transaction. Inputs
+   also record the exact output index they spend (hardcoded index 0 used to make
+   wallets spend other people's outputs).
+4. **Double spends**: spent outputs are tracked as `parentTxId:outputIndex` references
+   across the whole chain walk; duplicates - including the same transaction included
+   twice - are rejected.
+5. **Fork choice**: a candidate chain replaces the local chain only if it is strictly
+   longer (or is literally the same tip - idempotent re-sync). Equal-height forks are
+   rejected instead of silently overwriting local state.
+
+`WeaknessesIT` and `ReviewFindingsIT` pin each of these rules as regression tests: every
+attack from the original review now fails validation.
+
 **WALLET**  
 A cryptocurrency wallet is the main "store" of blocks and credentials linked to users. 
 The keys linked in the wallet are used to encrypt/decrypt and track ownership of transactions.

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.security.PublicKey;
 import java.security.SignatureException;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +52,11 @@ public class TransactionService {
         }
         transaction.setOutgoingTransactions(outTransactions);
 
-        List<IncomingTransaction> inTransactions = getPreviousInTransactions(senderWallet);
+        // A coinbase creates new coins out of nothing - it must not claim to spend
+        // anything, otherwise phantom inputs would pollute double-spend tracking.
+        List<IncomingTransaction> inTransactions = isInitial
+                ? new ArrayList<>()
+                : getPreviousInTransactions(senderWallet);
         transaction.setIncomingTransactions(inTransactions);
         transaction.setSignature(encryptionUtility.sign(transaction.getCanonicalPayload(), senderWallet.getPrivateKey()));
 
@@ -67,10 +72,15 @@ public class TransactionService {
         while (block != null) {
             List<Transaction> transactions = block.getTransactionList();
             for (Transaction tr : transactions) {
-                for (OutgoingTransaction otr : tr.getOutgoingTransactions()) {
-                    if (otr.getRecipientAddress().equals(senderWallet.getPublicKey())) {
-                        IncomingTransaction intr = new IncomingTransaction(tr, 0);
-                        inTransactions.add(intr);
+                List<OutgoingTransaction> outs = tr.getOutgoingTransactions();
+                if (outs == null) continue;
+                for (int index = 0; index < outs.size(); index++) {
+                    OutgoingTransaction otr = outs.get(index);
+                    if (otr.getRecipientAddress() != null
+                            && otr.getRecipientAddress().equals(senderWallet.getPublicKey())) {
+                        // reference the exact output - hardcoding index 0 used to make
+                        // wallets spend other people's outputs whenever theirs was not first
+                        inTransactions.add(new IncomingTransaction(tr, index));
                     }
                 }
                 //we just need transaction in last blocks
@@ -82,35 +92,120 @@ public class TransactionService {
         return inTransactions;
     }
 
+    /**
+     * Validates any transaction by dispatching on its type: coinbase transactions
+     * (initial) follow minting rules, every other transaction must prove ownership of
+     * everything it spends.
+     */
     public boolean validateTransaction(Transaction transaction) throws SignatureException {
+        if (transaction == null)
+            return false;
+        return transaction.isInitial()
+                ? validateCoinbaseTransaction(transaction)
+                : validateSpendTransaction(transaction);
+    }
 
-        String transactionMessage = transaction.getCanonicalPayload();
-        if (transaction.isInitial() || transaction.getIncomingTransactions() == null || transaction.getIncomingTransactions().isEmpty())
-            return true;
+    /**
+     * Coinbase ("initial") transactions are the ONLY way new coins may be created.
+     * Rules: no inputs, exactly one output paying exactly the {@link Consensus#BLOCK_INCENTIVE}
+     * to the miner's own address, signed with the miner's key. This replaces the old
+     * blanket "initial -> valid" bypass that allowed unlimited minting.
+     */
+    public boolean validateCoinbaseTransaction(Transaction transaction) throws SignatureException {
 
-        OutgoingTransaction firstInputAddress = transaction.getIncomingTransactions().get(0).getRecipient();
-        if (firstInputAddress != null && !encryptionUtility.verifySignature(transactionMessage, transaction.getSignature(),
-                firstInputAddress.getRecipientAddress())) {
-            LOGGER.info(("Invalid transaction signature, trying to spend someone else's money ?"));
+        List<IncomingTransaction> ins = transaction.getIncomingTransactions();
+        if (ins != null && !ins.isEmpty()) {
+            LOGGER.info("Coinbase transaction carries inputs - creating coins out of someone else's money?");
             return false;
         }
 
-        for (IncomingTransaction inTransaction : transaction.getIncomingTransactions()) {
-            if (inTransaction.getRecipient() != null && !validateTransaction(inTransaction.getTransaction())) {
+        List<OutgoingTransaction> outs = transaction.getOutgoingTransactions();
+        if (outs == null || outs.size() != 1) {
+            LOGGER.info("Coinbase transaction must have exactly one output, got {}",
+                    outs == null ? 0 : outs.size());
+            return false;
+        }
+
+        OutgoingTransaction reward = outs.get(0);
+        if (reward.getRecipientAddress() == null
+                || Consensus.BLOCK_INCENTIVE.compareTo(reward.getAmount()) != 0) {
+            LOGGER.info("Coinbase pays invalid amount {}, expected {}", reward.getAmount(), Consensus.BLOCK_INCENTIVE);
+            return false;
+        }
+
+        if (transaction.getWallet() == null || transaction.getWallet().address() == null
+                || !transaction.getWallet().address().equals(reward.getRecipientAddress())) {
+            LOGGER.info("Coinbase output does not pay the miner");
+            return false;
+        }
+
+        // The miner must sign the claim over its own key.
+        return encryptionUtility.verifySignature(transaction.getCanonicalPayload(),
+                transaction.getSignature(), reward.getRecipientAddress());
+    }
+
+    /**
+     * A spending transaction is valid when:
+     * <ul>
+     *     <li>it has at least one input and every referenced output resolves,</li>
+     *     <li>all referenced outputs belong to the SAME wallet,</li>
+     *     <li>the signature verifies against exactly that owner's public key.</li>
+     * </ul>
+     * Unlike the previous implementation there is no silent skip: a missing or
+     * unresolvable input reference makes the transaction invalid, so nobody can spend
+     * an output without proving ownership.
+     */
+    public boolean validateSpendTransaction(Transaction transaction) throws SignatureException {
+
+        List<IncomingTransaction> ins = transaction.getIncomingTransactions();
+        if (ins == null || ins.isEmpty()) {
+            LOGGER.info("Spending transaction without inputs - refusing non-coinbase money creation");
+            return false;
+        }
+
+        PublicKey owner = null;
+        for (IncomingTransaction inTransaction : ins) {
+            OutgoingTransaction spentOutput = resolveSpentOutput(inTransaction);
+            if (spentOutput == null || spentOutput.getRecipientAddress() == null) {
+                LOGGER.info("Unresolvable input reference {}", inTransaction);
+                return false;
+            }
+            if (owner == null) {
+                owner = spentOutput.getRecipientAddress();
+            } else if (!owner.equals(spentOutput.getRecipientAddress())) {
+                LOGGER.info("Transaction inputs belong to multiple wallets ({} and {})",
+                        spentOutput.getRecipientAddress(), owner);
+                return false;
+            }
+        }
+
+        String transactionMessage = transaction.getCanonicalPayload();
+        if (!encryptionUtility.verifySignature(transactionMessage, transaction.getSignature(), owner)) {
+            LOGGER.info("Invalid transaction signature, trying to spend someone else's money ?");
+            return false;
+        }
+
+        // Chained validity: the parent transactions themselves must be sound.
+        for (IncomingTransaction inTransaction : ins) {
+            if (!validateTransaction(inTransaction.getTransaction())) {
                 LOGGER.info("Invalid parent transaction");
                 return false;
             }
         }
-
-        for (int i = 1; i < transaction.getIncomingTransactions().size(); i++) { //starts with one
-            IncomingTransaction inTransaction = transaction.getIncomingTransactions().get(i);
-            if (!inTransaction.getRecipient().equals(firstInputAddress)) {
-                LOGGER.info("Transaction inputs belong to multiple wallets ({} and {})",
-                        inTransaction.getRecipient(), firstInputAddress);
-                return false;
-            }
-        }
         return true;
+    }
+
+    /**
+     * Resolves the output a given input spends; malformed references yield null rather
+     * than throwing, so hostile structures fail validation instead of crashing nodes.
+     */
+    private OutgoingTransaction resolveSpentOutput(IncomingTransaction inTransaction) {
+        try {
+            return inTransaction.parentOutPut();
+        } catch (RuntimeException e) {
+            LOGGER.info("Malformed input reference: {}", e.getMessage());
+            return null;
+        }
     }
 
     public BigDecimal computeTotalFee(List<Transaction> transactionList) {

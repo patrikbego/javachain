@@ -1,59 +1,64 @@
 package com.javachain;
 
 import com.javachain.dto.Block;
+import com.javachain.dto.IncomingTransaction;
 import com.javachain.dto.Transaction;
+import com.javachain.util.EncryptionUtility;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * The original version of this class demonstrated weaknesses of the old code (blanket
+ * "initial transaction -> valid" bypass, silent signature-check skips). After the
+ * verification & consensus rework those attacks are rejected, so this class now pins
+ * the REJECTIONS as regression guards:
+ *
+ * 1) an inflated coinbase fails minting validation,
+ * 2) a double spend passes standalone signature/ownership checks but is caught by
+ *     chain verification.
+ */
 public class WeaknessesIT extends JcApplicationIT {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(WeaknessesIT.class);
+
     @Test
-    public void testInvalidSignature() throws Exception {
+    public void testForgedCoinbaseAndDoubleSpendAreRejected() throws Exception {
+        // state inherited from given():
+        // patrik/donna/john are funded and synced to the shared b3 chain
 
-        initializeWallets();
+        // 1) minting rules: a coinbase paying more than the block incentive is invalid,
+        //    no matter who signs it
+        donnasWallet.setAmountToBeSent(new BigDecimal(999));
+        Transaction fakeMint = transactionService.send(donnasWallet, true, donnasWallet);
+        assertFalse(transactionService.validateTransaction(fakeMint),
+                "coinbase above the block incentive must be rejected");
 
-        Block b1 = blockService.mineBlock(patriksWallet, new ArrayList<>(), null);//todo replace this with hash code //this is new block, patrik should get 25
+        // 2) double spend: donna re-spends the output t4 already consumed.
+        //    Signature and ownership are perfectly valid here - the theft is only
+        //    visible at CHAIN level, which is exactly what verifyBlock() must catch.
+        donnasWallet.setAmountToBeSent(new BigDecimal(1));
+        Transaction doubleSpend = transactionService.send(donnasWallet, false, patriksWallet);
+        doubleSpend.setIncomingTransactions(Collections.singletonList(new IncomingTransaction(t3, 0)));
+        doubleSpend.setSignature(new EncryptionUtility()
+                .sign(doubleSpend.getCanonicalPayload(), donnasWallet.getPrivateKey()));
 
-        donnasWallet.setAmountToBeSent(new BigDecimal(5));
-        t3 = transactionService.send(johnsWallet, false, donnasWallet);
+        assertTrue(transactionService.validateTransaction(doubleSpend),
+                "standalone, the transaction looks perfectly valid");
 
-        johnsWallet.setAmountToBeSent(new BigDecimal(8));
-        t4 = transactionService.send(donnasWallet, false, johnsWallet);
+        Block tip = donnasWallet.getBlockchain();
+        Block cheatBlock = blockService.mineBlock(donnasWallet, Collections.singletonList(doubleSpend), tip);
+        LOGGER.info("cheat block mined: {}", cheatBlock.getHash());
 
-        Block b2 = blockService.mineBlock(johnsWallet, Collections.singletonList(t2), b1); // this is new block john should get 25 tokens
-//        LOGGER.debug("b2        : " + b2.getHash() + " with fee=" + transactionService.computeTotalFee(b2.getTransactionList()));
-
-        assertTrue(transactionService.validateTransaction(t2));
-        assertTrue(transactionService.validateTransaction(t3));
-        assertTrue(transactionService.validateTransaction(t4));
-
-        patriksWallet = walletService.syncBlockchain(patriksWallet, b2);
-        johnsWallet = walletService.syncBlockchain(johnsWallet, b2);
-        donnasWallet = walletService.syncBlockchain(donnasWallet, b2);
-
-        Block b3 = blockService.mineBlock(johnsWallet, Arrays.asList(t3, t4), b2); // this is new block john should get 25 tokens
-
-        patriksWallet = walletService.syncBlockchain(patriksWallet, b3);
-        johnsWallet = walletService.syncBlockchain(johnsWallet, b3);
-        donnasWallet = walletService.syncBlockchain(donnasWallet, b3);
-
-
-        johnsWallet.setAmountToBeSent(new BigDecimal(1));
-        Transaction tx = transactionService.send(johnsWallet, false, johnsWallet);
-
-        assertTrue(transactionService.validateTransaction(tx)); //??? TODO should this be false???
-
-        Block block = blockService.mineBlock(johnsWallet, Collections.singletonList(tx), b3);
-
-        assertFalse(blockService.verifyBlock(block));
+        // mining validates transactions standalone; the double spend is caught when
+        // the produced block is verified against the chain
+        assertFalse(blockService.verifyBlock(cheatBlock),
+                "chain verification must detect the double spend");
     }
-
-
 }

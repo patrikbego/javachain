@@ -5,6 +5,7 @@ import com.javachain.dto.OutgoingTransaction;
 import com.javachain.dto.Transaction;
 import com.javachain.dto.Wallet;
 import com.javachain.util.EncryptionUtility;
+import com.javachain.util.HashingUtility;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.function.Executable;
@@ -43,6 +44,8 @@ class BlockServiceTest {
     Block newBlock;
     @Mock
     EncryptionUtility encUtil;
+    @Mock
+    HashingUtility hashingUtility;
 
     @Test
     void shouldInjectMocks() {

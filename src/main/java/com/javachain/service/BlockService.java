@@ -1,6 +1,7 @@
 package com.javachain.service;
 
 import com.javachain.dto.*;
+import com.javachain.util.CanonicalSerializer;
 import com.javachain.util.EncryptionUtility;
 import com.javachain.util.HashingUtility;
 import org.slf4j.Logger;
@@ -11,7 +12,10 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.security.SignatureException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * The {@code BlockService} class is used for block related functionalities.
@@ -33,16 +37,6 @@ public class BlockService {
     final HashingUtility hashingUtility;
 
     final MiningService miningService;
-
-    /**
-     * Block incentive is the reward miner gets once successfully resolving the nonce.
-     */
-    private static final BigDecimal BLOCK_INCENTIVE = new BigDecimal(25);
-
-    /**
-     * Difficulty of finding a new block. In Bitcoin It is updated every 2016 blocks when the difficulty reset occurs.
-     */
-    private static final Integer DIFFICULTY = 2;
 
     @Autowired
     public BlockService(EncryptionUtility encryptionUtility, TransactionService transactionService,
@@ -86,7 +80,7 @@ public class BlockService {
 
 //        Wallet systemWallet = SystemWallet.getInstance();
 
-        wallet.setAmountToBeSent(BLOCK_INCENTIVE);
+        wallet.setAmountToBeSent(Consensus.BLOCK_INCENTIVE);
         Transaction miningTransaction = transactionService.send(wallet, true, wallet);
 
         List<Transaction> trs = new ArrayList<>();
@@ -100,8 +94,8 @@ public class BlockService {
 
         block.setTransactionList(trs);
         String hashingMessage = block.getHashingMessage();
-        block.setNonce(miningService.mineNonce(hashingMessage, DIFFICULTY));
-        block.setHash(miningService.mineDigest(hashingMessage, DIFFICULTY));
+        block.setNonce(miningService.mineNonce(hashingMessage, Consensus.DIFFICULTY));
+        block.setHash(miningService.mineDigest(hashingMessage, Consensus.DIFFICULTY));
 
         return block;
     }
@@ -154,50 +148,47 @@ public class BlockService {
     }
 
     public boolean verifyBlock(Block block) throws SignatureException {
-        return verifyBlock(null, block);
+        return verifyBlock(new HashSet<>(), block);
     }
 
-    private boolean verifyBlock(List<OutgoingTransaction> usedOutputs, Block block)
+    /**
+     * Verifies an entire chain, walking from the newest block towards genesis. For every
+     * block it checks:
+     * <ol>
+     *     <li>the stored hash really is sha256(canonical payload + nonce) - real
+     *     proof-of-work, not just a string with the right prefix,</li>
+     *     <li>every transaction is valid (coinbase rules or ownership-proofed spend),</li>
+     *     <li>no output is spent twice anywhere in the chain,</li>
+     *     <li>exactly one coinbase exists and it sits at index 0.</li>
+     * </ol>
+     */
+    private boolean verifyBlock(Set<String> usedOutputReferences, Block block)
             throws SignatureException {
         if (block == null) {
             return false;
         }
 
-        String prefix = miningService.generatePrefix(DIFFICULTY);
+        String prefix = miningService.generatePrefix(Consensus.DIFFICULTY);
 
         while (block != null) {
             String hash = block.getHash();
-            if (!hash.startsWith(prefix)) {
-                LOGGER.info("Block hash ({}}) doesn't start with prefix {}}", hash, prefix);
+            if (hash == null || !hash.startsWith(prefix)) {
+                LOGGER.info("Block hash ({}) doesn't start with prefix {}", hash, prefix);
                 return false;
             }
 
-            if (usedOutputs == null) {
-                usedOutputs = new ArrayList<>();
-            }
-            if (verifyListOfTransactions(usedOutputs, block)) {
+            // Proof-of-work must be real: recompute sha256(payload|nonce=X) and require
+            // equality with the stored hash. Earlier versions only checked the prefix,
+            // so any fabricated "11..." string passed as valid work.
+            String recomputed = hashingUtility.hexHash(block.getHashingMessage() + block.getNonce());
+            if (recomputed == null || !recomputed.equals(hash)) {
+                LOGGER.info("Block hash {} does not match recomputed proof-of-work {}", hash, recomputed);
                 return false;
             }
 
-//            Block block1 = blocks[1];
-//            if (block1 != null && block1.getHash() == null) {
-//                String clazz = block1.toString();
-//                block1.setHash(miningService.mineDigest(clazz, 2));
-//            }
-//            if (block1 != null && !block.getHash().equals(block1.getHash())) {
-//                if (!verifyBlock(usedOutputs, block.getAncestor(), blocks[1])) {
-//                    LOGGER.info("Failed to validate ancestor block");
-//                    return false;
-//                }
-//            }
-
-            //TODO enable this
-//            BigDecimal reward = transactionService.computeTotalFee(block.getTransactionList()).add(BLOCK_INCENTIVE);
-//            if (tr0.getOutTransactions().get(0).getAmount().compareTo(reward) != 0) {
-//                LOGGER.info(String.format("Invalid amount in transaction 0 : %s, expected %s",
-//                        tr0.getOutTransactions().get(0).getAmount(), reward));
-//                return false; //TODO fix - this is not working, reward is 26 and tr amount is 25
-//            }
+            if (verifyListOfTransactions(usedOutputReferences, block)) {
+                return false;
+            }
 
             if (verifyGenesisTransaction(block)) {
                 return false;
@@ -223,26 +214,44 @@ public class BlockService {
         return false;
     }
 
-    private boolean verifyListOfTransactions(List<OutgoingTransaction> usedOutputs, Block block)
+    /**
+     * Validates all transactions of one block and records spent outputs as
+     * {@code parentTxId:outputIndex} references. Returning true signals FAILURE (an
+     * invalid or double-spending transaction was found).
+     */
+    private boolean verifyListOfTransactions(Set<String> usedOutputReferences, Block block)
             throws SignatureException {
         for (Transaction tr : block.getTransactionList()) {
             if (!transactionService.validateTransaction(tr))
                 return true;
-            for (IncomingTransaction intr : tr.getIncomingTransactions()) {
-                if (tr.isInitial() && usedOutputs.contains(intr.parentOutPut())) {
-                    LOGGER.info("Transaction uses an already spent output : {} {}", intr.parentOutPut(), intr.getRecipient());
+            List<IncomingTransaction> ins = tr.getIncomingTransactions();
+            if (ins == null) continue;
+            for (IncomingTransaction intr : ins) {
+                String reference = CanonicalSerializer.transactionId(intr.getTransaction())
+                        + ":" + intr.getOutPutIndex();
+                if (!usedOutputReferences.add(reference)) {
+                    LOGGER.info("Double spend detected - output already spent: {}", reference);
                     return true;
                 }
-                usedOutputs.add(intr.parentOutPut());
             }
         }
         return false;
     }
 
+    /**
+     * Fork choice: a candidate chain replaces the local one only when it is STRICTLY
+     * longer, or when it is literally the same chain (idempotent re-sync of an identical
+     * tip). The old {@code >=} rule allowed a wallet's chain to be silently replaced by
+     * a different fork of equal length.
+     */
     public boolean isNewBlockBigger(Block walletsBlockChain, Block newBlockChain) {
         int oldblockCount = countBlocks(walletsBlockChain);
         int newblockCount = countBlocks(newBlockChain);
-        return newblockCount >= oldblockCount;
+        if (newblockCount > oldblockCount) {
+            return true;
+        }
+        return newblockCount == oldblockCount && walletsBlockChain != null
+                && Objects.equals(walletsBlockChain.getHash(), newBlockChain.getHash());
     }
 
     private int countBlocks(Block walletsBlockChain) {
