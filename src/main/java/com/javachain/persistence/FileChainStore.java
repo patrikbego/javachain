@@ -7,6 +7,9 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 /**
  * The {@code FileChainStore} persists blocks (and whole wallets, keys included) to disk
@@ -34,6 +37,29 @@ public final class FileChainStore {
     public static void store(Serializable object, File target) throws IOException {
         try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(target))) {
             out.writeObject(object);
+        }
+    }
+
+    /**
+     * Publishes a file so that concurrent readers never observe a half-written chain:
+     * the content is written to a temporary file in the same directory and then moved
+     * over the target. This is what makes directory-as-network safe - peers may read
+     * each other's files at any moment.
+     */
+    public static void storeAtomic(Serializable object, File target) throws IOException {
+        File temp = File.createTempFile(target.getName(), ".tmp", target.getParentFile());
+        try {
+            try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(temp))) {
+                out.writeObject(object);
+            }
+            try {
+                Files.move(temp.toPath(), target.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp.toPath());
         }
     }
 

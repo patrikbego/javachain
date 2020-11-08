@@ -273,6 +273,31 @@ chain can finally leave the process where it was born:
 This closes the loop on what made v1 a toy: before, nothing serialized could verify
 again after a restart, so persistence and network sync were impossible BY CONSTRUCTION.
 
+## NETWORK SYNC: TWO PEERS, ONE TRUTH
+
+`com.javachain.tools.ChainNode` turns the one-shot verifier into a running peer. The
+"network" is a shared directory; each peer owns `<name>.wallet`, publishes
+`<name>.chain` atomically (write-temp-then-rename, so nobody ever reads a half-written
+chain) and consumes a `<name>.mempool` file of transactions to include in its next
+block.
+
+Every round a node:
+
+1. **pulls** every foreign `.chain` file, validates it completely and adopts it only
+   if strictly longer - identical tips are idempotent no-ops, equal-height forks are
+   ignored;
+2. **mines** one block on its tip, including any mempool transaction that does not
+   double-spend something already confirmed in its current view;
+3. **publishes** the new tip.
+
+`PeerSyncIT` runs this for real: two independent JVM processes start from the same
+genesis, each handed a DIFFERENT leg of a double spend. They mine conflicting blocks,
+fight the fork - and converge through the consensus rules alone. The test then reads
+the published files and asserts: every published chain verifies from scratch, the
+peers agree on history (the shorter chain is an exact prefix of the longer one),
+exactly one leg of the double spend survived anywhere (the other was orphaned with its
+fork), and the spender's coins were consumed exactly once network-wide.
+
 **WALLET**  
 A cryptocurrency wallet is the main "store" of blocks and credentials linked to users. 
 The keys linked in the wallet are used to encrypt/decrypt and track ownership of transactions.
