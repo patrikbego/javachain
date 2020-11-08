@@ -10,6 +10,8 @@ import java.util.Objects;
  */
 public class IncomingTransaction implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     private Transaction transaction; // TODO here for validation, consider refactoring
     private final int outPutIndex;
 

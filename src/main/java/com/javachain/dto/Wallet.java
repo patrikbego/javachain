@@ -32,6 +32,8 @@ import java.util.Objects;
  */
 public class Wallet implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     private PrivateKey privateKey;
     private PublicKey publicKey;
     private String signer;

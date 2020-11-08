@@ -37,6 +37,8 @@ import java.util.Objects;
  */
 public class Block implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     /**
      * Hash of the ancestor block - the actual cryptographic chain link. Stored as a value
      * (not derived on the fly) so that the canonical payload commits to it and the chain

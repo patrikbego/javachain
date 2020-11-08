@@ -254,6 +254,25 @@ block:
 `WeaknessesIT` and `ReviewFindingsIT` pin each of these rules as regression tests: every
 attack from the original review now fails validation.
 
+## PERSISTENCE AND CROSS-PROCESS VERIFICATION
+
+Because hashing and signing are now fully canonical (no JVM identity hash codes), a
+chain can finally leave the process where it was born:
+
+- `FileChainStore` saves a chain tip (the whole chain hangs off it) or an entire wallet
+  to disk; all DTOs declare explicit `serialVersionUID`s.
+- `com.javachain.tools.VerifyChainFile` is a standalone verifier with NO Spring
+  context - services are wired by hand - that loads a chain file, re-validates every
+  rule from scratch, prints `CHAIN_VALID=true/false` and exits accordingly.
+- `PersistenceIT` proves both directions end to end: a chain built inside the test JVM
+  is accepted (`CHAIN_VALID=true`, exit 0) by a freshly spawned `java` process, and a
+  file whose genesis nonce was rewritten without redoing the work is rejected with
+  "hash does not match recomputed proof-of-work".
+- The interactive shell has a matching command: `verify-file <path>`.
+
+This closes the loop on what made v1 a toy: before, nothing serialized could verify
+again after a restart, so persistence and network sync were impossible BY CONSTRUCTION.
+
 **WALLET**  
 A cryptocurrency wallet is the main "store" of blocks and credentials linked to users. 
 The keys linked in the wallet are used to encrypt/decrypt and track ownership of transactions.
